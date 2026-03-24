@@ -7,5 +7,112 @@
   "deepseek_api": {
     "base_url": "https://api.deepseek.com",
     "temperature": 0.2
+  },
+  "ocr2json": {
+    "system_prompt": "你是一个科技合同文档解析助手。你会收到 PaddleOCR 输出的 OCR JSON，请根据其中的识别文本提取合同关键信息，并严格输出为合法 JSON。\n要求：\n- 只能输出 JSON\n- 不要输出解释\n- 不要输出 Markdown\n- 所有字段必须保留\n- 文本字段缺失填 \"\"\n- 数组字段缺失填 []\n- 无法判断的布尔字段填 null\n- 不允许臆造信息\n- 金额、日期、电话按原文提取",
+    "user_prompt_template": "请根据以下 OCR JSON 提取信息，并输出为指定 JSON 结构。\n\n文件名：{{file_name}}\n\n目标 JSON 结构：\n{{schema_json}}\n\nOCR JSON：\n{{ocr_json}}",
+    "schema_json": {
+      "doc_id": "",
+      "source": {
+        "file_name": "",
+        "file_type": "",
+        "input_type": "",
+        "page_count": 0,
+        "language": "zh-CN"
+      },
+      "processing": {
+        "ocr_used": false,
+        "pdf_text_used": false,
+        "preferred_text_source": "",
+        "status": "success",
+        "warnings": []
+      },
+      "raw_content": {
+        "title": "",
+        "full_text_available": true
+      },
+      "structured": {
+        "doc_type": "contract",
+        "doc_subtype": "",
+        "common_fields": {
+          "title": "",
+          "document_no": "",
+          "sign_date": "",
+          "sign_location": "",
+          "effective_period": "",
+          "party_a": "",
+          "party_b": "",
+          "amount": ""
+        },
+        "typed_fields": {
+          "project_name": "",
+          "cooperation_mode": "",
+          "contract_period": {
+            "raw_text": "",
+            "start_date": "",
+            "end_date": "",
+            "research_phase": {
+              "start_date": "",
+              "end_date": ""
+            },
+            "warranty_consulting_phase": {
+              "start_date": "",
+              "end_date": ""
+            }
+          },
+          "payment": {
+            "total_amount": "",
+            "payment_mode": "",
+            "stages": []
+          },
+          "party_a_info": {
+            "name": "",
+            "address": "",
+            "legal_representative": "",
+            "project_contact": "",
+            "contact_phone": "",
+            "email": ""
+          },
+          "party_b_info": {
+            "name": "",
+            "address": "",
+            "legal_representative": "",
+            "project_contact": "",
+            "contact_phone": "",
+            "email": ""
+          },
+          "bank_info": {
+            "account_name": "",
+            "bank_name": "",
+            "bank_account": ""
+          },
+          "deliverables": [],
+          "delivery": {
+            "deadline": "",
+            "location": ""
+          },
+          "acceptance": {
+            "rule": ""
+          },
+          "intellectual_property": {
+            "patent_application_right": "",
+            "ownership_summary": []
+          },
+          "dispute_resolution": "",
+          "effectiveness": ""
+        },
+        "entities": [],
+        "sections": [],
+        "extra": {
+          "seal_info": {
+            "party_a_seal_present": null,
+            "party_b_seal_present": null,
+            "cross_page_seal_present": null
+          },
+          "attachments_declared_in_contract": [],
+          "contract_copies": ""
+        }
+      }
+    }
   }
 }

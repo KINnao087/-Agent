@@ -16,6 +16,13 @@ class DeepSeekApiConfig:
 
 
 @dataclass(slots=True)
+class Ocr2JsonConfig:
+    system_prompt: str = ""
+    user_prompt_template: str = ""
+    schema_json: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class AgentConfig:
     model: str
     tool_defs: list[dict]
@@ -24,6 +31,7 @@ class AgentConfig:
     provider: str = "api"
     api_key: str | None = None
     deepseek_api: DeepSeekApiConfig = field(default_factory=DeepSeekApiConfig)
+    ocr2json: Ocr2JsonConfig = field(default_factory=Ocr2JsonConfig)
 
     @classmethod
     def from_dict(cls, config: dict[str, Any]) -> "AgentConfig":
@@ -67,6 +75,27 @@ class AgentConfig:
         if deepseek_api.api_key is not None and not isinstance(deepseek_api.api_key, str):
             raise TypeError("config field 'deepseek_api.api_key' must be a string or null")
 
+        raw_ocr2json = config.get("ocr2json") or {}
+        if not isinstance(raw_ocr2json, dict):
+            raise TypeError("config field 'ocr2json' must be an object or null")
+
+        system_prompt = raw_ocr2json.get("system_prompt", "")
+        user_prompt_template = raw_ocr2json.get("user_prompt_template", "")
+        schema_json = raw_ocr2json.get("schema_json", {})
+
+        if not isinstance(system_prompt, str):
+            raise TypeError("config field 'ocr2json.system_prompt' must be a string")
+        if not isinstance(user_prompt_template, str):
+            raise TypeError("config field 'ocr2json.user_prompt_template' must be a string")
+        if not isinstance(schema_json, dict):
+            raise TypeError("config field 'ocr2json.schema_json' must be an object")
+
+        ocr2json = Ocr2JsonConfig(
+            system_prompt=system_prompt,
+            user_prompt_template=user_prompt_template,
+            schema_json=schema_json,
+        )
+
         keep_last = int(config.get("keep_last", 4000))
         if keep_last <= 0:
             raise ValueError("config field 'keep_last' must be positive")
@@ -79,6 +108,7 @@ class AgentConfig:
             provider=provider,
             api_key=api_key,
             deepseek_api=deepseek_api,
+            ocr2json=ocr2json,
         )
 
 

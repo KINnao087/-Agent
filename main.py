@@ -1,4 +1,5 @@
-import paddle
-import paddleocr
+from core.commands.cli import main
 
-print('paddle', paddle.__version__)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

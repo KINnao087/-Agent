@@ -115,8 +115,7 @@ class Logger:
 
         rendered = self._render_message(message, *args, **kwargs)
         formatted = self._format_message(level, rendered)
-        output = sys.stderr if level in {LogLevel.ERROR, LogLevel.CRITICAL} else sys.stdout
-        print(formatted, file=output)
+        print(formatted, file=sys.stderr)
 
     def debug(self, message: object, *args, **kwargs) -> None:
         """输出 DEBUG 级别日志。"""

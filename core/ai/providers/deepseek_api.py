@@ -34,16 +34,20 @@ class DeepSeekApiProvider(BaseChatProvider):
         """发送一次对话请求并把返回结果整理成统一结构。"""
         logger = get_logger("ai-provider")
         is_stream = bool(stream_thinking_callback)
+        request_kwargs = {
+            "model": model,
+            "messages": messages,
+            "temperature": self._temperature,
+        }
+        if tool_defs:
+            request_kwargs["tools"] = tool_defs
+            request_kwargs["tool_choice"] = "auto"
 
         try:
             if not is_stream:
                 response = self._client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    tools=tool_defs,
-                    tool_choice="auto",
-                    temperature=self._temperature,
                     stream=False,
+                    **request_kwargs,
                 )
                 message = response.choices[0].message
                 tool_calls = [
@@ -64,12 +68,8 @@ class DeepSeekApiProvider(BaseChatProvider):
 
             start_thinking_stream()
             response = self._client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=tool_defs,
-                tool_choice="auto",
-                temperature=self._temperature,
                 stream=True,
+                **request_kwargs,
             )
 
             content_parts: list[str] = []
