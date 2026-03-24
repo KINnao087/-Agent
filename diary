@@ -1,0 +1,2 @@
+day1:
+    关于OCR识别部分，最终决定使用PaddleOCR 目前下载的是cpu版 后期可能考虑加上gpu版
