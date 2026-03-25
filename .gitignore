@@ -35,6 +35,11 @@ pip-wheel-metadata/
 .env
 .env.*
 
+# Local test data and generated OCR outputs
+test/output/
+test/testfiles/
+test/test.png
+
 # OS files
 .DS_Store
 Thumbs.db
