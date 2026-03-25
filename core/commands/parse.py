@@ -7,7 +7,7 @@ from pathlib import Path
 
 from core.ai import structure_ocr_json
 from core.ai.logger import get_logger
-from core.text import parse_path_to_json_list
+from core.text import build_linearized_document, parse_path_to_json_list
 
 logger = get_logger("parse-command")
 
@@ -79,13 +79,14 @@ def handle_parse_command(args: argparse.Namespace) -> int:
         "attachments": _load_attachment_ocr_list(args.attachments),
         "invoice": _load_invoice_ocr_list(args.invoice),
     }
-    logger.info(ocr_payload.get("attachments"))
+    ocr_payload["linearized"] = build_linearized_document(ocr_payload)
 
     logger.info(
-        "Start structuring contract_pages={}, attachments={}, invoice_pages={}",
+        "Start structuring contract_pages={}, attachments={}, invoice_pages={}, linearized_chars={}",
         len(ocr_payload["contract"]),
         len(ocr_payload["attachments"]),
         len(ocr_payload["invoice"]),
+        len(ocr_payload["linearized"]["full_text"]),
     )
 
     structured_json = struct_json(ocr_payload)

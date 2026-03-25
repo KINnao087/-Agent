@@ -13,5 +13,18 @@ day1:
 
 
 day2:
-    今天打算完成对合同的附件和发票的处理
     由于附件种类繁杂，json无法使用固定格式，打算使用可变格式来输出
+
+    什么是dolma格式：
+      - 通常是 .jsonl 或 .jsonl.gz
+      - 一行一个文档
+      - 核心一定有 id 和 text
+      - 常见还会带 source、created、added
+      - 新一点的 Dolma 3 数据里还能看到 metadata
+
+    要实现dolma格式文档：先处理出线性文档，随后拿到结构化json，将两者合并成dolma格式的record，再把所有record全部整合进jsonl
+
+    线性文本 ？
+    dolma规范的jsonl ？
+    pdf格式解析 ？
+    附件和发票解析 √
