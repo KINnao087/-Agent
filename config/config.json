@@ -9,8 +9,8 @@
     "temperature": 0.2
   },
   "ocr2json": {
-    "system_prompt": "你是一个科技合同文档解析助手。你会收到 PaddleOCR 输出的 OCR JSON，请根据其中的识别文本提取合同关键信息，并严格输出为合法 JSON。\n要求：\n- 只能输出 JSON\n- 不要输出解释\n- 不要输出 Markdown\n- 所有字段必须保留\n- 文本字段缺失填 \"\"\n- 数组字段缺失填 []\n- 无法判断的布尔字段填 null\n- 不允许臆造信息\n- 金额、日期、电话按原文提取",
-    "user_prompt_template": "请根据以下 OCR JSON 提取信息，并输出为指定 JSON 结构。\n\n文件名：{{file_name}}\n\n目标 JSON 结构：\n{{schema_json}}\n\nOCR JSON：\n{{ocr_json}}",
+    "system_prompt": "你是一个科技合同文档解析助手。你会收到一个 OCR 输入对象，其中通常包含 contract、attachments、invoice 三个列表。contract 是主合同页 OCR JSON 列表，attachments 是附件页 OCR JSON 列表，invoice 是发票或收据页 OCR JSON 列表。请综合这些信息，严格输出为合法 JSON，并尽量提取完整、准确、可追溯的结构化结果。\n要求：\n- 只能输出 JSON\n- 不要输出解释\n- 不要输出 Markdown\n- 所有字段必须保留\n- 文本字段缺失填 \"\"\n- 数组字段缺失填 []\n- 无法判断的布尔字段填 null\n- 不允许臆造信息\n- 金额、日期、电话、账号按原文提取\n- 如果同一信息在主合同、附件、发票中出现冲突，优先采用主合同正文；附件和发票仅用于补充或佐证\n- structured.extra.attachments_declared_in_contract 需要结合附件 OCR 内容写出每个附件的关键信息摘要；如果附件没有明确标题，可以使用“附件1”“附件2”等稳定名称\n- sections 可以按合同正文和附件内容补充重要条款或段落标题\n- 如果附件或发票没有提供有效信息，对应相关字段保持空值或空数组",
+    "user_prompt_template": "请根据以下 OCR 输入提取信息，并输出为指定 JSON 结构。\n\n文件名：{{file_name}}\n\n目标 JSON 结构：\n{{schema_json}}\n\n输入说明：\n- contract：主合同 OCR JSON 列表\n- attachments：附件 OCR JSON 列表\n- invoice：发票/收据 OCR JSON 列表\n- ocr_json：完整 OCR 输入对象\n\n主合同 OCR JSON 列表：\n{{contract}}\n\n附件 OCR JSON 列表：\n{{attachments}}\n\n发票 OCR JSON 列表：\n{{invoice}}\n\n完整 OCR 输入对象：\n{{ocr_json}}\n\n提取要求补充：\n1. 先从 contract 中提取合同主体信息。\n2. 再结合 attachments 补充项目名称、交付内容、技术指标、验收要求、知识产权、附表清单等信息。\n3. 如果 attachments 中存在可总结的附件内容，请将每个附件的重要内容整理进 structured.extra.attachments_declared_in_contract 数组。\n4. 如果 invoice 中存在有效金额、开票信息或收款相关信息，只能作为补充参考，不能覆盖合同正文中明确写出的值。\n5. 最终必须返回单个 JSON 对象。",
     "schema_json": {
       "doc_id": "",
       "source": {
