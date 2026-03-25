@@ -5,6 +5,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.path_utils import ensure_parent_dir
+
 
 def _utc_now_iso() -> str:
     """生成 UTC 时间戳字符串。"""
@@ -84,10 +86,7 @@ def build_dolma_records(
 
 def write_jsonl(records: list[dict], output_path: str | Path) -> str:
     """把记录列表写成 JSONL 文件。"""
-    path = Path(output_path)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = ensure_parent_dir(output_path)
 
     with path.open("w", encoding="utf-8") as file:
         for record in records:

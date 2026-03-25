@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.path_utils import ensure_directory
+
 _PAGE_RE = re.compile(r"^(第\s*\d+\s*页|共\s*\d+\s*页|page\s*\d+)$", re.I)
 _NOISE_RE = re.compile(r"^[\W_]+$")
 
@@ -72,7 +74,7 @@ def linearize_ocr_page(page_ocr: dict) -> str:
 
     items.sort()
 
-    # 先按“行”归并，再按从左到右合并片段，避免表单值跑到字段名前面。
+    # 先按行归并，再按从左到右合并片段，避免表单值跑到字段名前面。
     row_gap = 12.0
     rows: list[dict[str, Any]] = []
     for top, left, text in items:
@@ -132,10 +134,7 @@ def build_linearized_document(ocr_payload: dict) -> dict:
 
 def write_linearized_outputs(linearized_doc: dict, output_dir: str | Path) -> dict[str, str]:
     """把合同、附件、发票的线性化文本分别写入文件。"""
-    output_path = Path(output_dir)
-    if not output_path.is_absolute():
-        output_path = Path.cwd() / output_path
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_path = ensure_directory(output_dir)
 
     file_map = {
         "contract": output_path / "contract_linearized.txt",

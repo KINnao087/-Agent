@@ -23,8 +23,9 @@ day2:
       - 新一点的 Dolma 3 数据里还能看到 metadata
 
     要实现dolma格式文档：先处理出线性文档，随后拿到结构化json，将两者合并成dolma格式的record，再把所有record全部整合进jsonl
+    pdf格式的文件处理方式决定为先转换成若干png，在调用ocr
 
-    线性文本 ？
-    dolma规范的jsonl ？
-    pdf格式解析 ？
+    线性文本 √
+    dolma规范的jsonl √
+    pdf格式解析 √
     附件和发票解析 √

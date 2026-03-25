@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from core.ai import structure_ocr_json
 from core.ai.logger import get_logger
+from core.path_utils import ensure_parent_dir, resolve_path
 from core.text import build_linearized_document, parse_path_to_json_list
 
 logger = get_logger("parse-command")
@@ -43,14 +43,6 @@ def add_parse_command(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
-def _resolve_input_path(path_value: str) -> str:
-    """把命令行输入路径转换成绝对路径字符串。"""
-    path = Path(path_value)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return str(path.resolve())
-
-
 def _load_attachment_ocr_list(attachments_path: str | None) -> list[dict]:
     """调用 text 层公开接口，读取附件 OCR JSON 列表。"""
     attachment_list = parse_path_to_json_list(attachments_path)
@@ -74,7 +66,7 @@ def struct_json(ocr_payload: dict) -> dict:
 def handle_parse_command(args: argparse.Namespace) -> int:
     """执行 parse 子命令并输出结构化 JSON。"""
     ocr_payload = {
-        "input_path": _resolve_input_path(args.file),
+        "input_path": str(resolve_path(args.file)),
         "contract": parse_path_to_json_list(args.file),
         "attachments": _load_attachment_ocr_list(args.attachments),
         "invoice": _load_invoice_ocr_list(args.invoice),
@@ -94,10 +86,7 @@ def handle_parse_command(args: argparse.Namespace) -> int:
     print(json_text)
 
     if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = Path.cwd() / output_path
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path = ensure_parent_dir(args.output)
         output_path.write_text(json_text, encoding="utf-8")
         print(f"\nSaved output to: {output_path}", file=sys.stderr)
 

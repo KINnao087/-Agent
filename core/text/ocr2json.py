@@ -3,18 +3,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
-def _resolve_path(path_value: str | Path) -> Path:
-    """把输入路径规范化为绝对路径。"""
-    path = Path(path_value)
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path.resolve()
+from core.path_utils import list_files_by_suffix, resolve_path
 
 
 def parse_file_to_json(file_path: str | Path) -> dict:
     """读取单个 PNG 图片并返回 PaddleOCR 的识别结果 JSON。"""
-    path = _resolve_path(file_path)
+    path = resolve_path(file_path)
 
     if not path.exists():
         raise FileNotFoundError(f"input file not found: {path}")
@@ -60,17 +54,7 @@ def parse_folder_to_json_list(folder_path: str | Path | None) -> list[dict]:
     if not folder_path:
         return []
 
-    path = _resolve_path(folder_path)
-    if not path.exists():
-        raise FileNotFoundError(f"input folder not found: {path}")
-    if not path.is_dir():
-        raise ValueError(f"input path is not a directory: {path}")
-
-    image_files = sorted(
-        file_path
-        for file_path in path.iterdir()
-        if file_path.is_file() and file_path.suffix.lower() == ".png"
-    )
+    image_files = list_files_by_suffix(folder_path, ".png")
     return [parse_file_to_json(file_path) for file_path in image_files]
 
 
@@ -79,7 +63,7 @@ def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
     if not path_value:
         return []
 
-    path = _resolve_path(path_value)
+    path = resolve_path(path_value)
     if not path.exists():
         raise FileNotFoundError(f"input path not found: {path}")
     if path.is_file():
