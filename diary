@@ -29,3 +29,78 @@ day2:
     dolma规范的jsonl √
     pdf格式解析 √
     附件和发票解析 √
+
+day3:
+    来到了课题的第二部分 信息比对
+    总结下来要开发的内容如下
+
+      1. 设计科技合同基本信息核对接口 POST /api/contracts/check-basic-info
+      2. 明确接口输入：
+         contract_text
+         platform_basic_info
+      3. 明确接口输出：
+         contract_basic_info
+         compare_result
+         summary
+
+      功能拆分
+
+      1. 合同基本信息提取
+         从 contract_text 提取 contract_basic_info
+      2. 字段归一化处理
+         支持文本、电话、金额、日期、合同周期
+      3. 字段级核对
+         生成 compare_result
+      4. 核对结果统计
+         生成 summary
+      5. 接口服务编排
+         串联提取、比对、统计流程
+
+      代码结构
+
+      1. 路由层
+         接收请求并返回响应
+      2. 服务层
+         组织基本信息提取、核对、汇总
+      3. 提取层
+         负责从合同文本中提取结构化字段
+      4. 比对层
+         负责逐字段生成 compare_result
+      5. 工具层
+         提供归一化、路径读写等公共方法
+
+      待实现核心函数
+
+      1. extract_contract_basic_info
+      2. normalize_text
+      3. normalize_phone
+      4. normalize_amount
+      5. normalize_date
+      6. normalize_period
+      7. normalize_value
+      8. get_by_path
+      9. set_by_path
+      10. compare_basic_info
+      11. build_summary
+      12. check_basic_info_service
+
+      比对规则
+
+      1. 基于统一字段清单逐字段核对
+      2. 比对状态包括：
+         match
+         mismatch
+         missing_in_contract
+         missing_in_platform
+         both_empty
+      3. summary 统计总字段数、匹配数、不匹配数、缺失数和匹配率
+
+      当前进展
+
+      1. 已确定 contract_basic_info 数据结构
+      2. 已完成接口和模块框架设计
+      3. 下一步先实现归一化与字段比对逻辑，再实现合同信息提取逻辑
+
+day4:
+    完成了文本归一化处理
+
