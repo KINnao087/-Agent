@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .linearizer import add_linearizer_command, handle_linearizer_command
 from .parse import add_parse_command, handle_parse_command
 
 
@@ -15,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_parse_command(subparsers)
+    add_linearizer_command(subparsers)
     return parser
 
 
@@ -26,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "parse":
             return handle_parse_command(args)
+        if args.command == "linearizer":
+            return handle_linearizer_command(args)
 
         parser.print_help()
         return 1

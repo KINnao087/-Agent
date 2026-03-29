@@ -1,10 +1,10 @@
 from .base import BaseChatProvider, ChatResult, ToolCall, ToolFunction
-from .deepseek_api import DeepSeekApiProvider
+from .api_provider import ApiProvider
 
 __all__ = [
+    "ApiProvider",
     "BaseChatProvider",
     "ChatResult",
-    "DeepSeekApiProvider",
     "ToolCall",
     "ToolFunction",
 ]
