@@ -1,0 +1,40 @@
+[
+  {
+    "image_name": "seal2.png",
+    "image_shape": [
+      344,
+      371,
+      3
+    ],
+    "red_mask_shape": [
+      344,
+      371
+    ],
+    "clean_mask_shape": [
+      344,
+      371
+    ],
+    "crop_shape": [
+      321,
+      325,
+      3
+    ],
+    "enhanced_crop_shape": [
+      321,
+      325,
+      3
+    ],
+    "bbox": {
+      "x": 11,
+      "y": 8,
+      "width": 325,
+      "height": 321
+    },
+    "outputs": {
+      "red_mask": "D:\\pywork\\PythonProject\\test\\seal\\output\\seal2_red_mask.png",
+      "clean_mask": "D:\\pywork\\PythonProject\\test\\seal\\output\\seal2_clean_mask.png",
+      "crop": "D:\\pywork\\PythonProject\\test\\seal\\output\\seal2_crop.png",
+      "enhanced_crop": "D:\\pywork\\PythonProject\\test\\seal\\output\\seal2_enhanced_crop.png"
+    }
+  }
+]
