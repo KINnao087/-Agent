@@ -9,8 +9,8 @@ from .logger import get_logger
 
 
 @dataclass(slots=True)
-class DeepSeekApiConfig:
-    base_url: str = "https://api.deepseek.com"
+class ApiConfig:
+    base_url: str = ""
     temperature: float = 0.2
     api_key: str | None = None
 
@@ -29,8 +29,7 @@ class AgentConfig:
     base_system: str = ""
     keep_last: int = 4000
     provider: str = "api"
-    api_key: str | None = None
-    deepseek_api: DeepSeekApiConfig = field(default_factory=DeepSeekApiConfig)
+    api: ApiConfig = field(default_factory=ApiConfig)
     ocr2json: Ocr2JsonConfig = field(default_factory=Ocr2JsonConfig)
 
     @classmethod
@@ -59,21 +58,17 @@ class AgentConfig:
         if not provider:
             raise TypeError("config field 'provider' must be a non-empty string")
 
-        api_key = config.get("api_key")
-        if api_key is not None and not isinstance(api_key, str):
-            raise TypeError("config field 'api_key' must be a string or null")
-
-        raw_api = config.get("deepseek_api") or {}
+        raw_api = config.get("api") or {}
         if not isinstance(raw_api, dict):
-            raise TypeError("config field 'deepseek_api' must be an object or null")
+            raise TypeError("config field 'api' must be an object or null")
 
-        deepseek_api = DeepSeekApiConfig(
-            base_url=str(raw_api.get("base_url") or "https://api.deepseek.com"),
+        api = ApiConfig(
+            base_url=str(raw_api.get("base_url") or ""),
             temperature=float(raw_api.get("temperature", 0.2)),
             api_key=raw_api.get("api_key"),
         )
-        if deepseek_api.api_key is not None and not isinstance(deepseek_api.api_key, str):
-            raise TypeError("config field 'deepseek_api.api_key' must be a string or null")
+        if api.api_key is not None and not isinstance(api.api_key, str):
+            raise TypeError("config field 'api.api_key' must be a string or null")
 
         raw_ocr2json = config.get("ocr2json") or {}
         if not isinstance(raw_ocr2json, dict):
@@ -106,8 +101,7 @@ class AgentConfig:
             tool_defs=tool_defs,
             keep_last=keep_last,
             provider=provider,
-            api_key=api_key,
-            deepseek_api=deepseek_api,
+            api=api,
             ocr2json=ocr2json,
         )
 

@@ -11,14 +11,14 @@ from ..logger import (
 from .base import BaseChatProvider, ChatResult, ToolCall, ToolFunction
 
 
-class DeepSeekApiProvider(BaseChatProvider):
+class ApiProvider(BaseChatProvider):
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://api.deepseek.com",
+        base_url: str,
         temperature: float = 0.2,
     ):
-        """使用兼容 OpenAI 的 SDK 初始化 API provider。"""
+        """使用兼容 OpenAI 的 SDK 初始化通用 API provider。"""
         from openai import OpenAI
 
         self._client = OpenAI(api_key=api_key, base_url=base_url)
@@ -123,7 +123,7 @@ class DeepSeekApiProvider(BaseChatProvider):
                 reasoning_content="".join(reasoning_parts),
             )
         except Exception as exc:
-            logger.error("DeepSeek API call failed: {}", str(exc))
+            logger.error("API call failed: {}", str(exc))
             raise
         finally:
             if is_stream:

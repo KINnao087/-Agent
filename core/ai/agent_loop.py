@@ -5,7 +5,6 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .llm_client import deepseek_chat
 from .logger import get_logger
 from .message_store import append_message
 from .providers import ToolCall, ToolFunction
@@ -235,7 +234,12 @@ def run_main_loop(
     for step in range(1, max_steps + 1):
         logger.info("Agent loop step {} start, message_count={}", step, len(messages))
         thinking_callback = (lambda chunk: None) if enable_thinking_stream else None
-        message = deepseek_chat(client, model, tool_defs, messages, thinking_callback)
+        message = client.chat(
+            model=model,
+            tool_defs=tool_defs,
+            messages=messages,
+            stream_thinking_callback=thinking_callback,
+        )
 
         tool_calls = getattr(message, "tool_calls", None) or []
         if tool_calls:
