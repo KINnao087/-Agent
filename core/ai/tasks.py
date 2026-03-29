@@ -6,7 +6,10 @@ from pathlib import Path
 
 from .config import AgentConfig, load_agent_config
 from .json_parser import parse_json_object
+from .logger import get_logger
 from .session import AgentRunner
+
+logger = get_logger("ai-tasks")
 
 
 def _merge_system_prompts(base_system: str, work_description: str) -> str:
@@ -32,6 +35,8 @@ def _run_message_with_config(
         base_system=_merge_system_prompts(config.base_system, work_description),
         tool_defs=[],
     )
+    logger.info("AI system prompt:\n{}", runtime_config.base_system)
+    logger.info("AI user message:\n{}", user_message)
     runner = AgentRunner(runtime_config)
     reply, _ = runner.run_and_get_reply(
         task=user_message,
