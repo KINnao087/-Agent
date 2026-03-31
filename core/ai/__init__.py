@@ -28,7 +28,7 @@ __all__ = [
     "normalize_provider_name",
     "parse_json_object",
     "run_main_loop",
-    "run_message_and_get_reply",
+    "run_message_and_get_reply", #主要入口
     "set_log_level",
     "structure_ocr_json",
     "trim_messages",
