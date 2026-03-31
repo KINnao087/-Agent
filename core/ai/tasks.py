@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 from .config import AgentConfig, load_agent_config
 from .json_parser import parse_json_object
 from .logger import get_logger
+from .llm_client import build_provider
 from .session import AgentRunner
 
 logger = get_logger("ai-tasks")
@@ -62,6 +64,58 @@ def run_message_and_get_reply(
         max_steps=max_steps,
         enable_thinking_stream=enable_thinking_stream,
     )
+
+
+def _image_path_to_data_url(image_path: str | Path) -> str:
+    """把本地图片路径转换为 data URL。"""
+    path = Path(image_path)
+    image_bytes = path.read_bytes()
+    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+
+    suffix = path.suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        mime_type = "image/jpeg"
+    elif suffix == ".webp":
+        mime_type = "image/webp"
+    else:
+        mime_type = "image/png"
+
+    return f"data:{mime_type};base64,{image_base64}"
+
+
+def run_image_and_get_reply(
+    image_path: str | Path,
+    user_message: str,
+    work_description: str = "",
+    config_path: str | Path | None = None,
+) -> str:
+    """发送一张本地图片和一段文本给多模态模型，并返回回复文本。"""
+    config = load_agent_config(config_path)
+    provider = build_provider(config)
+    runtime_system = _merge_system_prompts(config.base_system, work_description)
+    data_url = _image_path_to_data_url(image_path)
+
+    messages = [
+        {"role": "system", "content": runtime_system},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": user_message},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        },
+    ]
+
+    logger.info("AI system prompt:\n{}", runtime_system)
+    logger.info("AI user message:\n{}", user_message)
+    logger.info("AI image path: {}", Path(image_path))
+
+    result = provider.chat(
+        model=config.model,
+        tool_defs=[],
+        messages=messages,
+    )
+    return result.content
 
 
 def _build_ocr2json_user_message(config: AgentConfig, ocr_payload: dict) -> str:
