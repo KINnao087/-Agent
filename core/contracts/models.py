@@ -38,7 +38,7 @@ class BuyerBasicInfo(BaseModel):
 
 
 class ContractBasicInfo(BaseModel):
-    """科技合同基本信息。字段结构保持当前已确定设计。"""
+    """科技合同基本信息。"""
 
     contract_no: str = ""
     project_name: str = ""
@@ -52,7 +52,7 @@ class ContractBasicInfo(BaseModel):
 
 
 class CompareFieldResult(BaseModel):
-    """单个字段的核对结果。"""
+    """单个字段的比对结果。"""
 
     label: str = ""
     contract_value: str = ""
@@ -86,7 +86,7 @@ class BuyerCompareResult(BaseModel):
 
 
 class ContractBasicInfoCompareResult(BaseModel):
-    """整体 compare_result。结构与 contract_basic_info 基本对应。"""
+    """整体 compare_result。"""
 
     contract_no: CompareFieldResult = Field(default_factory=CompareFieldResult)
     project_name: CompareFieldResult = Field(default_factory=CompareFieldResult)
@@ -126,4 +126,3 @@ class CheckBasicInfoResponse(BaseModel):
     contract_basic_info: ContractBasicInfo
     compare_result: ContractBasicInfoCompareResult
     summary: Summary
-
