@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from core.ai import parse_json_object, run_image_and_get_reply, run_message_and_get_reply
-from core.text import linearize_ocr_page
+from core.text import linearize_ocr_page, parse_folder_to_json_list
+from core.vision.seal import detect_seal_candidates
 from core.vision.seal.models import SealCandidate
 
 ContinuityStatus = Literal["continuous", "discontinuous", "unknown"]
@@ -441,3 +442,34 @@ def check_contract_integrity(
         page_texts=page_texts,
         contract_seal_integrity=contract_seal_integrity,
     )
+
+def _collect_seal_candidates(contract_pages: list[dict[str, object]]) -> list:
+    """对合同末尾几页做签章候选检测。"""
+    candidates = []
+    total_pages = len(contract_pages)
+    start_index = max(0, total_pages - 3)
+
+    for page_index, page in enumerate(contract_pages[start_index:], start=start_index + 1):
+        image_path = page.get("input_path")
+        if not isinstance(image_path, str) or not image_path:
+            continue
+
+        page_candidates = detect_seal_candidates(image_path=image_path, page_index=page_index)
+        candidates.extend(page_candidates)
+
+    return candidates
+
+from pathlib import Path
+def check_contract_all(contract_path: str | Path) -> ContractIntegrityResult:
+    contract_path = Path(contract_path)
+
+    if not contract_path.exists():
+        raise FileNotFoundError(contract_path)
+    # if not contract_path.is_file():
+    #     raise FileNotFoundError(contract_path)
+    if not contract_path.is_dir():
+        raise NotADirectoryError(contract_path)
+
+    contract_pages = parse_folder_to_json_list(contract_path)
+    seal_candidates = _collect_seal_candidates(contract_pages)
+    return check_contract_integrity(contract_pages, seal_candidates)
