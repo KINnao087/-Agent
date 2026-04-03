@@ -7,7 +7,7 @@ from .llm_client import build_provider, normalize_provider_name
 from .logger import LogLevel, get_logger, set_log_level
 from .message_store import append_message, calc_total_tokens, trim_messages
 from .session import AgentRunner, ConversationSession, build_initial_session
-from .tasks import run_message_and_get_reply, structure_ocr_json
+from .tasks import run_image_and_get_reply, run_message_and_get_reply, structure_ocr_json
 from .token_counter import count_message_tokens, estimate_tokens
 
 __all__ = [
@@ -27,8 +27,9 @@ __all__ = [
     "load_agent_config",
     "normalize_provider_name",
     "parse_json_object",
+    "run_image_and_get_reply",
     "run_main_loop",
-    "run_message_and_get_reply", #主要入口
+    "run_message_and_get_reply",
     "set_log_level",
     "structure_ocr_json",
     "trim_messages",
