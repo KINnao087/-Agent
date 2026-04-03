@@ -12,9 +12,9 @@ MaskArray = npt.NDArray[np.uint8]
 # 红色在 HSV 中跨越 0 度，因此拆成两段范围。
 # 当前版本只把红色区域当作“定位印章”的线索，最终结果仍然使用原图裁剪。
 LOWER_RED_1 = np.array([0, 45, 10], dtype=np.uint8)
-UPPER_RED_1 = np.array([14, 255, 215], dtype=np.uint8)
+UPPER_RED_1 = np.array([14, 255, 255], dtype=np.uint8)
 LOWER_RED_2 = np.array([166, 45, 10], dtype=np.uint8)
-UPPER_RED_2 = np.array([180, 255, 215], dtype=np.uint8)
+UPPER_RED_2 = np.array([180, 255, 255], dtype=np.uint8)
 
 
 def load_image(image_path: str | Path) -> ImageArray:
