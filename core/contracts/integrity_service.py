@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 from core.ai import parse_json_object, run_image_and_get_reply, run_message_and_get_reply
@@ -71,7 +72,7 @@ class ContractClarityResult:
 
 @dataclass(slots=True)
 class PartySealIntegrityResult:
-    """买方或卖方签章完整性结果。"""
+    """单方签章结果。"""
 
     present: bool | None = None
     status: SealIntegrityStatus = "unknown"
@@ -83,7 +84,7 @@ class PartySealIntegrityResult:
 
 @dataclass(slots=True)
 class SealCandidateReviewResult:
-    """单个签章候选图的审核结果。"""
+    """单张签章候选图审核结果。"""
 
     owner: SealOwner = "unknown"
     present: bool | None = None
@@ -116,11 +117,11 @@ class ContractIntegrityResult:
 
 
 def build_contract_page_texts(contract_pages: list[ContractPageOCR]) -> list[ContractPageText]:
-    """把逐页 OCR 结果转换为逐页线性化文本。"""
-    result: list[ContractPageText] = []
-    for index, page in enumerate(contract_pages, start=1):
-        result.append(ContractPageText(page_index=index, page_text=linearize_ocr_page(page)))
-    return result
+    """把逐页 OCR 结果转换成逐页线性化文本。"""
+    return [
+        ContractPageText(page_index=index, page_text=linearize_ocr_page(page))
+        for index, page in enumerate(contract_pages, start=1)
+    ]
 
 
 def build_integrity_user_message(page_texts: list[ContractPageText]) -> str:
@@ -201,29 +202,32 @@ def build_seal_integrity_user_message(
     )
 
     return f"""
-请根据以下科技合同的逐页线性化文本，以及一张签章候选图片，判断这张图片中的签章更可能属于买方还是卖方，并判断其是否存在、是否完整、是否可读。
+你将收到一张签章候选图片。你必须直接观察这张图片本身，并结合下面的合同逐页线性化文本，判断该图片中的签章更可能属于买方还是卖方，以及该签章是否存在、是否完整、是否清晰可读。
+
+强约束：
+1. 必须基于图片内容做判断，不能忽略图片
+2. 不能把普通红色文字、阴影、噪声、污点误判为签章
+3. 如果图片中没有明确可识别的签章，请返回 present = null 或 false，并说明原因
+4. 如果无法可靠判断买方或卖方归属，请返回 owner = "unknown"
+5. 如果无法可靠判断完整性或清晰度，请返回 status = "unknown" 或 "unclear"
+6. 只允许输出单个 JSON 对象，不要输出解释、备注、代码块或 Markdown
 
 候选图片信息：
 - page_index: {candidate.page_index}
 - image_path: {candidate.crop_path or candidate.enhanced_crop_path or candidate.image_path}
 
-判断要求：
-1. 结合合同文本中的买方、卖方、甲方、乙方、委托方、受托方等信息推断签章归属
-2. 判断该图片中的签章是否真实存在，而不是噪声或非签章图形
+判断目标：
+1. 判断图片中是否存在真实签章
+2. 判断签章更可能属于 seller、buyer 还是 unknown
 3. 判断签章是否完整，是否存在明显缺损、裁切、遮挡
 4. 判断签章是否清晰可读
-5. 如果证据不足，请返回 unknown，不要臆造
 
-输出要求：
-1. 只能输出单个 JSON 对象
-2. 不要输出解释性文字
-3. 不要输出 Markdown
-4. 返回结构必须严格如下：
+返回结构必须严格如下：
 {{
   "owner": "seller | buyer | unknown",
-  "present": true,
+  "present": true | false | null,
   "status": "intact | damaged | unclear | missing | unknown",
-  "readable": true,
+  "readable": true | false | null,
   "reason": ""
 }}
 
@@ -233,7 +237,7 @@ def build_seal_integrity_user_message(
 
 
 def _build_issues(raw_items: object) -> list[IntegrityIssue]:
-    """把 issues 列表转换为结构化问题项。"""
+    """把 issues 列表转换成结构化问题项。"""
     if not isinstance(raw_items, list):
         return []
 
@@ -241,7 +245,6 @@ def _build_issues(raw_items: object) -> list[IntegrityIssue]:
     for item in raw_items:
         if not isinstance(item, dict):
             continue
-
         page_index = item.get("page_index")
         issues.append(
             IntegrityIssue(
@@ -257,7 +260,7 @@ def build_contract_integrity_result(
     page_texts: list[ContractPageText],
     contract_seal_integrity: ContractSealIntegrityResult | None = None,
 ) -> ContractIntegrityResult:
-    """把 AI 返回结果映射为合同完整性校验结果。"""
+    """把 AI 返回结果映射成合同完整性结果。"""
     continuity = data.get("contract_continuity", {})
     completeness = data.get("contract_completeness", {})
     replacement_page = data.get("replacement_page", {})
@@ -294,7 +297,7 @@ def build_contract_integrity_result(
     suspected_pages = [page for page in suspected_pages if isinstance(page, int)]
 
     raw_score = clarity.get("score")
-    clarity_score = float(raw_score) if isinstance(raw_score, int | float) else None
+    clarity_score = float(raw_score) if isinstance(raw_score, (int, float)) else None
 
     return ContractIntegrityResult(
         page_texts=page_texts,
@@ -326,7 +329,7 @@ def build_seal_candidate_review_result(
     data: dict[str, object],
     candidate: SealCandidate,
 ) -> SealCandidateReviewResult:
-    """把单张签章图片的 AI 审核结果映射为结构化结果。"""
+    """把单张签章图的 AI 结果映射成结构化结果。"""
     owner = data.get("owner", "unknown")
     if owner not in {"seller", "buyer", "unknown"}:
         owner = "unknown"
@@ -355,7 +358,7 @@ def build_seal_candidate_review_result(
 
 
 def _seal_review_priority(review: SealCandidateReviewResult) -> int:
-    """给签章候选审核结果打一个简单优先级。"""
+    """给签章审核结果打优先级。"""
     if review.present is True and review.status == "intact" and review.readable is True:
         return 5
     if review.present is True and review.status == "intact":
@@ -373,7 +376,7 @@ def _merge_party_seal_result(
     owner: SealOwner,
     reviews: list[SealCandidateReviewResult],
 ) -> PartySealIntegrityResult:
-    """从候选审核结果中汇总某一方的签章结果。"""
+    """从候选审核结果中汇总某一方签章结果。"""
     matched_reviews = [review for review in reviews if review.owner == owner]
     if not matched_reviews:
         return PartySealIntegrityResult()
@@ -392,7 +395,7 @@ def _merge_party_seal_result(
 def build_contract_seal_integrity_result(
     reviews: list[SealCandidateReviewResult],
 ) -> ContractSealIntegrityResult:
-    """把多个签章候选审核结果汇总为买卖方签章结果。"""
+    """把多张签章审核结果汇总成合同签章结果。"""
     return ContractSealIntegrityResult(
         seller_seal=_merge_party_seal_result("seller", reviews),
         buyer_seal=_merge_party_seal_result("buyer", reviews),
@@ -404,7 +407,7 @@ def check_contract_seal_integrity(
     page_texts: list[ContractPageText],
     seal_candidates: list[SealCandidate],
 ) -> ContractSealIntegrityResult:
-    """调用多模态模型审核签章候选图，并汇总买卖方签章结果。"""
+    """调用多模态模型审核签章候选图。"""
     if not seal_candidates:
         return ContractSealIntegrityResult()
 
@@ -414,7 +417,7 @@ def check_contract_seal_integrity(
         reply_text = run_image_and_get_reply(
             image_path=image_path,
             user_message=build_seal_integrity_user_message(page_texts, candidate),
-            work_description="你是科技合同签章校验助手，只返回 JSON。",
+            work_description="你是科技合同签章校验助手，必须直接观察图片内容判断，并且只返回 JSON。",
         )
         data = parse_json_object(reply_text)
         reviews.append(build_seal_candidate_review_result(data, candidate))
@@ -443,33 +446,28 @@ def check_contract_integrity(
         contract_seal_integrity=contract_seal_integrity,
     )
 
-def _collect_seal_candidates(contract_pages: list[dict[str, object]]) -> list:
-    """对合同末尾几页做签章候选检测。"""
-    candidates = []
-    total_pages = len(contract_pages)
-    start_index = max(0, total_pages - 3)
 
-    for page_index, page in enumerate(contract_pages[start_index:], start=start_index + 1):
+def _collect_seal_candidates(contract_pages: list[dict[str, object]]) -> list[SealCandidate]:
+    """对整份合同所有页面做签章候选检测。"""
+    candidates: list[SealCandidate] = []
+    for page_index, page in enumerate(contract_pages, start=1):
         image_path = page.get("input_path")
         if not isinstance(image_path, str) or not image_path:
             continue
-
-        page_candidates = detect_seal_candidates(image_path=image_path, page_index=page_index)
-        candidates.extend(page_candidates)
-
+        candidates.extend(
+            detect_seal_candidates(image_path=image_path, page_index=page_index)
+        )
     return candidates
 
-from pathlib import Path
+
 def check_contract_all(contract_path: str | Path) -> ContractIntegrityResult:
-    contract_path = Path(contract_path)
+    """从合同目录直接完成文字和签章完整性校验。"""
+    contract_dir = Path(contract_path)
+    if not contract_dir.exists():
+        raise FileNotFoundError(contract_dir)
+    if not contract_dir.is_dir():
+        raise NotADirectoryError(contract_dir)
 
-    if not contract_path.exists():
-        raise FileNotFoundError(contract_path)
-    # if not contract_path.is_file():
-    #     raise FileNotFoundError(contract_path)
-    if not contract_path.is_dir():
-        raise NotADirectoryError(contract_path)
-
-    contract_pages = parse_folder_to_json_list(contract_path)
+    contract_pages = parse_folder_to_json_list(contract_dir)
     seal_candidates = _collect_seal_candidates(contract_pages)
     return check_contract_integrity(contract_pages, seal_candidates)
