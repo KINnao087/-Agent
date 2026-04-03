@@ -66,8 +66,8 @@ def run_message_and_get_reply(
     )
 
 
-def _image_path_to_data_url(image_path: str | Path) -> str:
-    """把本地图片路径转换为 data URL。"""
+def _img2b64_dataurl(image_path: str | Path) -> str:
+    """把本地图片转换成base64格式"""
     path = Path(image_path)
     image_bytes = path.read_bytes()
     image_base64 = base64.b64encode(image_bytes).decode("ascii")
@@ -93,7 +93,7 @@ def run_image_and_get_reply(
     config = load_agent_config(config_path)
     provider = build_provider(config)
     runtime_system = _merge_system_prompts(config.base_system, work_description)
-    data_url = _image_path_to_data_url(image_path)
+    data_url = _img2b64_dataurl(image_path)
 
     messages = [
         {"role": "system", "content": runtime_system},

@@ -3,11 +3,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from core.path_utils import list_files_by_suffix, resolve_path
+from core.path_utils import ensure_directory, list_files_by_suffix, resolve_path
+
+from .linearizer import linearize_ocr_page
+from .pdf2png import pdf2png
 
 
 def parse_file_to_json(file_path: str | Path) -> dict:
-    """读取单个 PNG 图片并返回 PaddleOCR 的识别结果 JSON。"""
+    """读取单个 PNG 图片并返回 OCR JSON。"""
     path = resolve_path(file_path)
 
     if not path.exists():
@@ -17,7 +20,6 @@ def parse_file_to_json(file_path: str | Path) -> dict:
     if path.suffix.lower() != ".png":
         raise ValueError("only .png files are supported")
 
-    # 关闭 MKLDNN 以避免当前环境下的 Paddle CPU 推理报错。
     os.environ["FLAGS_use_mkldnn"] = "0"
     os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
     os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
@@ -50,16 +52,26 @@ def parse_file_to_json(file_path: str | Path) -> dict:
 
 
 def parse_folder_to_json_list(folder_path: str | Path | None) -> list[dict]:
-    """解析文件夹中的所有 PNG 图片，并返回对应的 OCR JSON 列表。"""
+    """读取目录中的 PNG 和 PDF，转成 OCR JSON 后去重返回。"""
     if not folder_path:
         return []
 
-    image_files = list_files_by_suffix(folder_path, ".png")
-    return [parse_file_to_json(file_path) for file_path in image_files]
+    folder = resolve_path(folder_path)
+    png_files = list_files_by_suffix(folder, ".png")
+    pdf_files = list_files_by_suffix(folder, ".pdf")
+
+    rendered_root = ensure_directory(folder / "_pdf_pages")
+    for pdf_file in pdf_files:
+        pdf_png_dir = rendered_root / pdf_file.stem
+        pdf2png(pdf_file, pdf_png_dir)
+        png_files.extend(list_files_by_suffix(pdf_png_dir, ".png"))
+
+    ocrjson_list = [parse_file_to_json(file_path) for file_path in png_files]
+    return deduplicate_ocrjson1(ocrjson_list)
 
 
 def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
-    """解析单个 PNG 或 PNG 文件夹，并统一返回 OCR JSON 列表。"""
+    """解析单个 PNG 或目录，并统一返回 OCR JSON 列表。"""
     if not path_value:
         return []
 
@@ -71,3 +83,33 @@ def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
     if path.is_dir():
         return parse_folder_to_json_list(path)
     raise ValueError(f"unsupported input path: {path}")
+
+
+def deduplicate_ocrjson2(val1: list[dict], val2: list[dict]) -> list[dict]:
+    """合并两份 OCR JSON 列表并按线性化文本去重。"""
+    dedup_map: dict[str, dict] = {}
+    for item in val1:
+        key = linearize_ocr_page(item)
+        if key in dedup_map:
+            continue
+        dedup_map[key] = item
+
+    for item in val2:
+        key = linearize_ocr_page(item)
+        if key in dedup_map:
+            continue
+        dedup_map[key] = item
+
+    return list(dedup_map.values())
+
+
+def deduplicate_ocrjson1(val: list[dict]) -> list[dict]:
+    """对单份 OCR JSON 列表按线性化文本去重。"""
+    dedup_map: dict[str, dict] = {}
+    for item in val:
+        key = linearize_ocr_page(item)
+        if key in dedup_map:
+            continue
+        dedup_map[key] = item
+
+    return list(dedup_map.values())
