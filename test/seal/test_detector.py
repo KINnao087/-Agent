@@ -1,76 +1,55 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-import cv2
-import numpy as np
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-from core.vision.seal.detector import (
-    build_candidate_bbox,
-    detect_seal_candidates,
-    find_red_contours,
+from core.text.pdf2png import pdf2png
+from core.vision.seal.detector import detect_seal_candidates
+
+DEFAULT_INPUT_PDF = (
+    ROOT_DIR
+    / "test"
+    / "testfiles"
+    / "contract"
+    / "contract1.pdf"
 )
-from core.vision.seal.models import SealBBox, SealCandidate
-
-INPUT_DIR = Path(__file__).resolve().parent / "imgs"
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
-
-
-def _build_test_mask() -> np.ndarray:
-    """构造包含两个有效区域和一个小噪点的测试二值图。"""
-    mask = np.zeros((200, 240), dtype=np.uint8)
-    cv2.rectangle(mask, (10, 20), (70, 100), 255, thickness=-1)
-    cv2.rectangle(mask, (140, 60), (210, 150), 255, thickness=-1)
-    cv2.rectangle(mask, (5, 5), (10, 10), 255, thickness=-1)
-    return mask
+RENDER_DIR = (
+    ROOT_DIR
+    / "test"
+    / "output"
+    / "contract1_simulated_tampering_detect"
+    / "pages"
+)
 
 
-def test_find_red_contours_returns_multiple_large_regions() -> None:
-    """应提取多个有效轮廓，并过滤掉面积过小的噪点。"""
-    mask = _build_test_mask()
+def main() -> None:
+    """读取 PDF，检测签章候选，并打印裁剪结果。"""
+    input_pdf = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else DEFAULT_INPUT_PDF
+    if not input_pdf.exists():
+        raise FileNotFoundError(f"pdf not found: {input_pdf}")
 
-    contours = find_red_contours(mask)
+    page_paths = [Path(path) for path in pdf2png(input_pdf, RENDER_DIR, dpi=200)]
+    print(f"输入 PDF: {input_pdf}")
+    print(f"渲染页数: {len(page_paths)}")
 
-    assert isinstance(contours, list)
-    assert len(contours) == 2
-    assert all(isinstance(contour, np.ndarray) for contour in contours)
+    all_candidates = []
+    for page_index, page_path in enumerate(page_paths, start=1):
+        page_candidates = detect_seal_candidates(image_path=page_path, page_index=page_index)
+        all_candidates.extend(page_candidates)
 
+        print(f"\n第 {page_index} 页: {page_path}")
+        print(f"候选数量: {len(page_candidates)}")
+        for index, candidate in enumerate(page_candidates):
+            print(f"[{index}] bbox={candidate.bbox}")
+            print(f"    crop={candidate.crop_path}")
+            print(f"    enhanced={candidate.enhanced_crop_path}")
 
-def test_build_candidate_bbox_returns_expected_box() -> None:
-    """应根据轮廓生成正确的外接框。"""
-    mask = np.zeros((100, 100), dtype=np.uint8)
-    cv2.rectangle(mask, (20, 30), (50, 70), 255, thickness=-1)
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    bbox = build_candidate_bbox(contours[0])
-
-    assert isinstance(bbox, SealBBox)
-    assert bbox.x == 20
-    assert bbox.y == 30
-    assert bbox.width == 31
-    assert bbox.height == 41
+    print(f"\n总候选数量: {len(all_candidates)}")
 
 
-def test_detect_seal_candidates_returns_candidates_for_real_image() -> None:
-    """对真实样例图应能返回候选签章列表。"""
-    image_path = INPUT_DIR / "seal2.png"
-
-    candidates = detect_seal_candidates(image_path=image_path, page_index=3)
-
-    assert isinstance(candidates, list)
-    assert candidates
-    assert all(isinstance(candidate, SealCandidate) for candidate in candidates)
-    assert all(candidate.page_index == 3 for candidate in candidates)
-    assert all(candidate.image_path == str(image_path) for candidate in candidates)
-
-    for candidate in candidates:
-        assert candidate.bbox.width > 0
-        assert candidate.bbox.height > 0
-        assert candidate.bbox.x >= 0
-        assert candidate.bbox.y >= 0
-        assert candidate.crop_path is not None
-        assert candidate.enhanced_crop_path is not None
-        assert Path(candidate.crop_path).exists()
-        assert Path(candidate.enhanced_crop_path).exists()
-        assert Path(candidate.crop_path).parent == OUTPUT_DIR
-        assert Path(candidate.enhanced_crop_path).parent == OUTPUT_DIR
+if __name__ == "__main__":
+    main()
