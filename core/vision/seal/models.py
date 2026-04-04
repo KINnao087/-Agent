@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypeAlias
 
 
-@dataclass(slots=True)
-class SealBBox:
-    """签章候选区域的外接矩形。"""
-
-    x: int
-    y: int
-    width: int
-    height: int
+SealBBox: TypeAlias = list[int]
+"""签章候选区域的外接框，格式为 [x, y, width, height]。"""
 
 
 @dataclass(slots=True)
