@@ -18,6 +18,13 @@ from .preprocessing import (
 
 ContourArray = npt.NDArray[np.int32]
 OUTPUT_DIR = Path(__file__).resolve().parents[3] / "test" / "seal" / "output"
+MIN_CONTOUR_AREA = 800
+MIN_BBOX_WIDTH = 120
+MIN_BBOX_HEIGHT = 120
+MIN_BBOX_AREA = 30000
+MAX_BBOX_ASPECT_RATIO = 1.6
+MAX_CANDIDATES_PER_PAGE = 10
+MERGE_GAP = 80
 
 
 def find_red_contours(mask: MaskArray) -> list[ContourArray]:
@@ -29,7 +36,7 @@ def find_red_contours(mask: MaskArray) -> list[ContourArray]:
     result: list[ContourArray] = []
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area < 100:
+        if area < MIN_CONTOUR_AREA:
             continue
         result.append(contour)
 
@@ -42,7 +49,71 @@ def build_candidate_bbox(contour: ContourArray) -> SealBBox:
     输入是一条轮廓，输出是标准化的 SealBBox。
     """
     x, y, width, height = cv2.boundingRect(contour)
-    return SealBBox(x=x, y=y, width=width, height=height)
+    return [x, y, width, height]
+
+
+def _boxes_are_close(box1: SealBBox, box2: SealBBox, gap: int = MERGE_GAP) -> bool:
+    """判断两个候选框是否相交或足够接近。"""
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+
+    left1 = x1 - gap
+    top1 = y1 - gap
+    right1 = x1 + w1 + gap
+    bottom1 = y1 + h1 + gap
+
+    left2 = x2
+    top2 = y2
+    right2 = x2 + w2
+    bottom2 = y2 + h2
+
+    horizontal_overlap = not (right1 < left2 or right2 < left1)
+    vertical_overlap = not (bottom1 < top2 or bottom2 < top1)
+    return horizontal_overlap and vertical_overlap
+
+
+def _merge_two_boxes(box1: SealBBox, box2: SealBBox) -> SealBBox:
+    """把两个候选框合并成一个外接框。"""
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+
+    left = min(x1, x2)
+    top = min(y1, y2)
+    right = max(x1 + w1, x2 + w2)
+    bottom = max(y1 + h1, y2 + h2)
+    return [left, top, right - left, bottom - top]
+
+
+def merge_candidate_bboxes(boxes: list[SealBBox]) -> list[SealBBox]:
+    """合并彼此相交或接近的候选框。"""
+    merged = [box[:] for box in boxes]
+    changed = True
+
+    while changed:
+        changed = False
+        next_boxes: list[SealBBox] = []
+        used = [False] * len(merged)
+
+        for i, current in enumerate(merged):
+            if used[i]:
+                continue
+
+            merged_current = current[:]
+            for j in range(i + 1, len(merged)):
+                if used[j]:
+                    continue
+                if _boxes_are_close(merged_current, merged[j]):
+                    merged_current = _merge_two_boxes(merged_current, merged[j])
+                    used[j] = True
+                    changed = True
+
+            used[i] = True
+            next_boxes.append(merged_current)
+
+        merged = next_boxes
+
+    merged.sort(key=lambda box: box[2] * box[3], reverse=True)
+    return merged
 
 
 def detect_seal_candidates(
@@ -57,13 +128,26 @@ def detect_seal_candidates(
     red_mask = build_red_mask(image)
     clean_mask = clean_red_mask(red_mask)
     contours = find_red_contours(clean_mask)
+    candidate_boxes = merge_candidate_bboxes(
+        [build_candidate_bbox(contour) for contour in contours]
+    )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     candidates: list[SealCandidate] = []
-    for index, contour in enumerate(contours):
-        bbox = build_candidate_bbox(contour)
-        crop = crop_bbox(image, bbox.x, bbox.y, bbox.width, bbox.height)
+    for index, bbox in enumerate(candidate_boxes):
+        x, y, width, height = bbox
+        bbox_area = width * height
+        aspect_ratio = max(width / height, height / width)
+
+        if width < MIN_BBOX_WIDTH or height < MIN_BBOX_HEIGHT:
+            continue
+        if bbox_area < MIN_BBOX_AREA:
+            continue
+        if aspect_ratio > MAX_BBOX_ASPECT_RATIO:
+            continue
+
+        crop = crop_bbox(image, x, y, width, height)
         enhanced_crop = enhance_seal_crop(crop)
 
         crop_path = OUTPUT_DIR / f"{image_path.stem}_page{page_index}_candidate{index}_crop.png"
@@ -83,5 +167,8 @@ def detect_seal_candidates(
                 enhanced_crop_path=str(enhanced_crop_path),
             )
         )
+
+        if len(candidates) >= MAX_CANDIDATES_PER_PAGE:
+            break
 
     return candidates
