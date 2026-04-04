@@ -13,8 +13,8 @@ from core.contracts.integrity_service import check_contract_integrity, check_con
 from core.text import parse_folder_to_json_list
 from core.vision.seal.detector import detect_seal_candidates
 
-TEST_CONTRACT_DIR = Path("test/testfiles/contract")
-
+# TEST_CONTRACT_DIR = Path("test/testfiles/contract")
+TEST_CONTRACT_DIR = Path("test/testfiles/contract1_simulated_tampering")
 
 def collect_seal_candidates(contract_pages: list[dict[str, object]]) -> list:
     """对合同末尾几页做签章候选检测。"""
