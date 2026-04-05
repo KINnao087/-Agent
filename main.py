@@ -1,4 +1,4 @@
-from core.commands.cli import main
+from core.presentation.cli import main
 
 
 if __name__ == "__main__":
