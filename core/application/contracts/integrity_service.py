@@ -20,7 +20,7 @@ logger = get_logger("contract-integrity-service")
 
 
 def build_contract_page_texts(contract_pages: list[ContractPageOCR]) -> list[ContractPageText]:
-    """Convert OCR page payloads into ordered linearized page texts."""
+    """把 OCR 页载荷转换为按顺序排列的线性化页文本。"""
     return [
         ContractPageText(page_index=index, page_text=linearize_ocr_page(page))
         for index, page in enumerate(contract_pages, start=1)
@@ -28,7 +28,7 @@ def build_contract_page_texts(contract_pages: list[ContractPageOCR]) -> list[Con
 
 
 def collect_seal_candidates(contract_pages: list[ContractPageOCR]) -> list[SealCandidate]:
-    """Detect seal candidates across all contract pages."""
+    """为整份合同的所有页面检测印章候选区域。"""
     candidates: list[SealCandidate] = []
     for page_index, page in enumerate(contract_pages, start=1):
         image_path = page.get("input_path")
@@ -44,7 +44,7 @@ def check_contract_integrity(
     contract_pages: list[ContractPageOCR],
     seal_candidates: list[SealCandidate] | None = None,
 ) -> ContractIntegrityResult:
-    """Run the contract integrity review use case."""
+    """执行合同完整性审核用例。"""
     page_texts = build_contract_page_texts(contract_pages)
     result = review_contract_integrity(page_texts)
     if seal_candidates:
@@ -53,7 +53,7 @@ def check_contract_integrity(
 
 
 def check_contract_all(contract_path: str | Path) -> ContractIntegrityResult:
-    """Load contract pages from a folder and run full integrity review."""
+    """从目录加载合同页面，并执行完整的完整性审核。"""
     contract_dir = Path(contract_path)
     if not contract_dir.exists():
         raise FileNotFoundError(contract_dir)

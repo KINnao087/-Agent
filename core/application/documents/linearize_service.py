@@ -9,7 +9,7 @@ from .ocr_payload import OCRPayload, build_ocr_payload
 
 @dataclass(slots=True)
 class LinearizeDocumentsResult:
-    """Linearized text output for a set of contract documents."""
+    """一组合同文档的线性化文本输出结果。"""
 
     ocr_payload: OCRPayload
     linearized_document: dict
@@ -22,7 +22,7 @@ def linearize_documents(
     attachments_path: str | None = None,
     invoice_path: str | None = None,
 ) -> LinearizeDocumentsResult:
-    """Execute OCR payload loading and write linearized text outputs."""
+    """执行 OCR 载荷装配，并写出线性化文本结果。"""
     ocr_payload = build_ocr_payload(
         file_path=file_path,
         attachments_path=attachments_path,
@@ -36,4 +36,3 @@ def linearize_documents(
         linearized_document=linearized_document,
         output_paths=output_paths,
     )
-

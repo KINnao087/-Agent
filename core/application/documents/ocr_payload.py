@@ -16,7 +16,7 @@ def build_ocr_payload(
     attachments_path: str | None = None,
     invoice_path: str | None = None,
 ) -> OCRPayload:
-    """Load contract-related documents and normalize them into one OCR payload."""
+    """加载合同相关文档，并组装成统一的 OCR 载荷。"""
     ocr_payload: OCRPayload = {
         "input_path": str(resolve_path(file_path)),
         "contract": parse_path_to_json_list(file_path),
@@ -26,11 +26,10 @@ def build_ocr_payload(
     ocr_payload["linearized"] = build_linearized_document(ocr_payload)
 
     logger.info(
-        "Prepared OCR payload contract_pages={}, attachments={}, invoice_pages={}, linearized_chars={}",
+        "已准备 OCR 载荷 contract_pages={}, attachments={}, invoice_pages={}, linearized_chars={}",
         len(ocr_payload["contract"]),
         len(ocr_payload["attachments"]),
         len(ocr_payload["invoice"]),
         len(ocr_payload["linearized"]["full_text"]),
     )
     return ocr_payload
-

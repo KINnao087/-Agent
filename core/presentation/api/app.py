@@ -6,11 +6,10 @@ from .routes.contracts import router as contract_router
 
 
 def create_app() -> FastAPI:
-    """Build the FastAPI application."""
+    """创建 FastAPI 应用。"""
     app = FastAPI(title="Contracts API", version="0.1.0")
     app.include_router(contract_router)
     return app
 
 
 app = create_app()
-

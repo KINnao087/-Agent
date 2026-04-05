@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from .assistant_protocol import extract_user_visible_message
 from .agent_loop import run_main_loop
 from .config import AgentConfig
 from .llm_client import build_provider
@@ -41,7 +42,8 @@ def get_last_assistant_text(messages: list[dict]) -> str:
             continue
         content = message.get("content")
         if isinstance(content, str) and content.strip():
-            return content.strip()
+            structured_text = extract_user_visible_message(content)
+            return structured_text if structured_text is not None else content.strip()
     return ""
 
 

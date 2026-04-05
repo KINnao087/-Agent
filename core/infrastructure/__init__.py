@@ -1,2 +1,1 @@
-"""Infrastructure adapters and external integrations."""
-
+"""基础设施适配器与外部集成实现。"""
