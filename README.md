@@ -1,5 +1,21 @@
 # PythonProject
 
+科技合同审核项目，当前按分层架构组织：
+
+```text
+core/
+  presentation/   CLI 和 HTTP 入口
+  application/    用例编排层
+  domain/         合同领域模型与规则
+  infrastructure/ AI / OCR / 视觉等外部能力
+  shared/         通用工具
+```
+
+## Entrypoints
+
+- CLI: `python main.py ...`
+- HTTP API: `uvicorn server:app --reload`
+
 ## Server Mode
 
 本项目支持通过 FastAPI 以 server 模式启动。
@@ -19,12 +35,6 @@
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn server:app --reload
 ```
-
-说明：
-
-- `server` 对应项目根目录下的 `server.py`
-- `app` 对应 `server.py` 中定义的 FastAPI 应用实例
-- `--reload` 表示开发模式下自动重载
 
 ### 3. 访问接口文档
 
