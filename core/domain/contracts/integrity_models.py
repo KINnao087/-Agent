@@ -16,7 +16,7 @@ ContractPageOCR = dict[str, object]
 
 @dataclass(slots=True)
 class ContractPageText:
-    """Linearized text for a single contract page."""
+    """单个合同页面的线性化文本。"""
 
     page_index: int
     page_text: str
@@ -24,7 +24,7 @@ class ContractPageText:
 
 @dataclass(slots=True)
 class IntegrityIssue:
-    """Single issue found during contract integrity review."""
+    """合同完整性审核中发现的单个问题。"""
 
     page_index: int | None = None
     message: str = ""
@@ -32,7 +32,7 @@ class IntegrityIssue:
 
 @dataclass(slots=True)
 class ContractContinuityResult:
-    """Result for continuity review."""
+    """合同连续性审核结果。"""
 
     status: ContinuityStatus = "unknown"
     reason: str = ""
@@ -41,7 +41,7 @@ class ContractContinuityResult:
 
 @dataclass(slots=True)
 class ContractCompletenessResult:
-    """Result for completeness review."""
+    """合同完整性审核结果。"""
 
     status: CompletenessStatus = "unknown"
     reason: str = ""
@@ -50,7 +50,7 @@ class ContractCompletenessResult:
 
 @dataclass(slots=True)
 class ReplacementPageResult:
-    """Result for replacement-page review."""
+    """替换页审核结果。"""
 
     status: ReplacementPageStatus = "unknown"
     reason: str = ""
@@ -59,7 +59,7 @@ class ReplacementPageResult:
 
 @dataclass(slots=True)
 class ContractClarityResult:
-    """Result for clarity review."""
+    """合同清晰度审核结果。"""
 
     status: ClarityStatus = "unknown"
     reason: str = ""
@@ -68,7 +68,7 @@ class ContractClarityResult:
 
 @dataclass(slots=True)
 class SealConsistencyResult:
-    """Result for seal consistency review."""
+    """印章一致性审核结果。"""
 
     seller_seal_consistency: SealConsistencyStatus = "unknown"
     buyer_seal_consistency: SealConsistencyStatus = "unknown"
@@ -78,7 +78,7 @@ class SealConsistencyResult:
 
 @dataclass(slots=True)
 class SealForgeryRiskResult:
-    """Result for seal forgery risk review."""
+    """印章伪造风险审核结果。"""
 
     forged: bool | None = None
     ps_added: bool | None = None
@@ -91,7 +91,7 @@ class SealForgeryRiskResult:
 
 @dataclass(slots=True)
 class PartySealIntegrityResult:
-    """Integrity result for one party seal."""
+    """单方印章完整性结果。"""
 
     present: bool | None = None
     status: SealIntegrityStatus = "unknown"
@@ -105,7 +105,7 @@ class PartySealIntegrityResult:
 
 @dataclass(slots=True)
 class SealCandidateReviewResult:
-    """Review result for one detected seal candidate."""
+    """单个检测到的印章候选审核结果。"""
 
     owner: SealOwner = "unknown"
     present: bool | None = None
@@ -120,7 +120,7 @@ class SealCandidateReviewResult:
 
 @dataclass(slots=True)
 class ContractSealIntegrityResult:
-    """Seal integrity result for the full contract."""
+    """整份合同的印章完整性结果。"""
 
     seller_seal: PartySealIntegrityResult = field(default_factory=PartySealIntegrityResult)
     buyer_seal: PartySealIntegrityResult = field(default_factory=PartySealIntegrityResult)
@@ -129,7 +129,7 @@ class ContractSealIntegrityResult:
 
 @dataclass(slots=True)
 class ContractIntegrityResult:
-    """Combined contract integrity result."""
+    """合同完整性综合审核结果。"""
 
     page_texts: list[ContractPageText] = field(default_factory=list)
     contract_continuity: ContractContinuityResult = field(default_factory=ContractContinuityResult)
@@ -137,4 +137,3 @@ class ContractIntegrityResult:
     replacement_page: ReplacementPageResult = field(default_factory=ReplacementPageResult)
     contract_clarity: ContractClarityResult = field(default_factory=ContractClarityResult)
     contract_seal_integrity: ContractSealIntegrityResult = field(default_factory=ContractSealIntegrityResult)
-

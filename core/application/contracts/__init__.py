@@ -1,4 +1,4 @@
-"""Contract-related application services."""
+"""合同相关的应用服务。"""
 
 from .basic_info_service import check_basic_info, check_basic_info_service
 from .integrity_service import (
@@ -14,4 +14,3 @@ __all__ = [
     "check_contract_all",
     "check_contract_integrity",
 ]
-

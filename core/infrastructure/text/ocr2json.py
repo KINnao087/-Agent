@@ -70,8 +70,25 @@ def parse_folder_to_json_list(folder_path: str | Path | None) -> list[dict]:
     return deduplicate_ocrjson1(ocrjson_list)
 
 
+def _parse_single_pdf_to_json_list(pdf_path: str | Path) -> list[dict]:
+    """把单个 PDF 渲染成 PNG 后执行 OCR，并返回 OCR JSON 列表。"""
+    pdf_file = resolve_path(pdf_path)
+    if not pdf_file.exists():
+        raise FileNotFoundError(f"input pdf not found: {pdf_file}")
+    if not pdf_file.is_file():
+        raise ValueError(f"input path is not a file: {pdf_file}")
+    if pdf_file.suffix.lower() != ".pdf":
+        raise ValueError("only .pdf files are supported")
+
+    rendered_dir = ensure_directory(pdf_file.parent / "_pdf_pages" / pdf_file.stem)
+    pdf2png(pdf_file, rendered_dir)
+    png_files = list_files_by_suffix(rendered_dir, ".png")
+    ocrjson_list = [parse_file_to_json(file_path) for file_path in png_files]
+    return deduplicate_ocrjson1(ocrjson_list)
+
+
 def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
-    """解析单个 PNG 或目录，并统一返回 OCR JSON 列表。"""
+    """解析单个 PNG、单个 PDF 或目录，并统一返回 OCR JSON 列表。"""
     if not path_value:
         return []
 
@@ -79,6 +96,8 @@ def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"input path not found: {path}")
     if path.is_file():
+        if path.suffix.lower() == ".pdf":
+            return _parse_single_pdf_to_json_list(path)
         return [parse_file_to_json(path)]
     if path.is_dir():
         return parse_folder_to_json_list(path)

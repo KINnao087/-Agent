@@ -5,12 +5,11 @@ import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from .assistant_protocol import AssistantResponse, parse_assistant_response
 from .logger import get_logger
 from .message_store import append_message
 from .providers import ToolCall, ToolFunction
 
-CALL_RE = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.S)
-FINAL_RE = re.compile(r"<final>\s*(.*?)\s*</final>", re.S)
 EDIT_INTENT_RE = re.compile(
     r"(\bedit\b|\bmodify\b|\bchange\b|\bupdate\b|\brewrite\b|\brefactor\b|\bfix\b|\bcomment\b|修改|更新|重构|修复|注释|回写)",
     re.I,
@@ -20,9 +19,20 @@ WRITE_ENFORCEMENT_TEXT = (
     "The user requested a file modification. You must use a tool_call to apply the change. "
     "If write_file is available, use write_file instead of pasting modified code directly."
 )
-INVALID_TOOL_CALL_JSON_TEXT = (
-    "Your previous <tool_call> JSON was invalid. Return exactly one corrected <tool_call> tag with strict valid JSON only. "
-    "Escape all string values correctly. If you call write_file, the arguments.content field must be a valid JSON string with escaped newlines and quotes."
+STRUCTURED_RESPONSE_PROTOCOL_TEXT = (
+    "When tools are available, every non-tool assistant reply must be a single JSON object only. "
+    'Use {"type":"to_user","message":"..."} to answer the user, '
+    'use {"type":"ask_user","message":"..."} to ask for missing information, '
+    'and use a native tool call whenever possible. '
+    'If native tool calls are unavailable, use {"type":"tool_call","name":"tool_name","arguments":{...}}. '
+    "Do not output markdown, prose outside JSON, or status narration."
+)
+INVALID_STRUCTURED_RESPONSE_TEXT = (
+    "Your previous reply did not follow the required JSON response protocol. "
+    'Return exactly one JSON object with one of these forms: '
+    '{"type":"to_user","message":"..."}, '
+    '{"type":"ask_user","message":"..."}, '
+    '{"type":"tool_call","name":"tool_name","arguments":{...}}.'
 )
 
 ToolFn = Callable[..., Any]
@@ -34,36 +44,6 @@ def _preview_text(value: object, limit: int = 300) -> str:
     text = "" if value is None else str(value)
     text = text.replace("\r", "\\r").replace("\n", "\\n")
     return text if len(text) <= limit else text[:limit] + "...(truncated)"
-
-
-def parse_tool_call(content: str):
-    """解析 assistant 文本中内嵌的一个工具调用标签。"""
-    match = CALL_RE.search(content or "")
-    if not match:
-        return None
-
-    payload = match.group(1)
-    try:
-        obj = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            "Invalid tool_call JSON at "
-            f"line {exc.lineno} column {exc.colno}: {exc.msg}. "
-            f"Payload preview: {_preview_text(payload, 500)}"
-        ) from exc
-
-    name = obj.get("name")
-    if not name:
-        raise ValueError(
-            f"tool_call is missing name. Payload preview: {_preview_text(payload, 500)}"
-        )
-    return name, obj.get("arguments", {})
-
-
-def parse_final(content: str):
-    """提取带 final 标签的最终回复内容。"""
-    match = FINAL_RE.search(content or "")
-    return match.group(1) if match else None
 
 
 def _latest_user_text(messages: list[dict]) -> str:
@@ -117,6 +97,39 @@ def _normalize_tool_result(result: Any) -> dict[str, Any]:
     if result is None:
         return {"ok": True, "output": ""}
     return {"ok": True, "output": str(result)}
+
+
+def _append_assistant_message(
+    messages: list[dict],
+    total_tokens: int,
+    keep_last: int,
+    model: str,
+    content: str,
+    tool_calls: list[ToolCall] | None = None,
+) -> tuple[list[dict], int]:
+    """把 assistant 消息追加到历史中。"""
+    message: dict[str, Any] = {"role": "assistant", "content": content}
+    if tool_calls:
+        message["tool_calls"] = [
+            {
+                "id": tool_call.id,
+                "type": "function",
+                "function": {
+                    "name": tool_call.function.name,
+                    "arguments": tool_call.function.arguments,
+                },
+            }
+            for tool_call in tool_calls
+        ]
+
+    return append_message(
+        messages,
+        message,
+        total_tokens,
+        keep_last=keep_last,
+        model=model,
+        auto_trim=True,
+    )
 
 
 def handle_tool_call(
@@ -216,6 +229,17 @@ def handle_tool_call(
     return messages, total_tokens
 
 
+def _build_synthetic_tool_call(response: AssistantResponse, step: int) -> ToolCall:
+    """把 JSON 形式的 tool_call 响应转成内部统一的 ToolCall 对象。"""
+    return ToolCall(
+        id=f"json_tool_call_{step}",
+        function=ToolFunction(
+            name=response.name,
+            arguments=json.dumps(response.arguments, ensure_ascii=False),
+        ),
+    )
+
+
 def run_main_loop(
     client,
     model: str,
@@ -248,28 +272,13 @@ def run_main_loop(
                 len(tool_calls),
                 _preview_text(getattr(message, "content", "") or ""),
             )
-
-            messages, total_tokens = append_message(
+            messages, total_tokens = _append_assistant_message(
                 messages,
-                {
-                    "role": "assistant",
-                    "content": message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tool_call.id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_call.function.name,
-                                "arguments": tool_call.function.arguments,
-                            },
-                        }
-                        for tool_call in tool_calls
-                    ],
-                },
                 total_tokens,
                 keep_last=keep_last,
                 model=model,
-                auto_trim=True,
+                content=message.content or "",
+                tool_calls=tool_calls,
             )
 
             tool_call = tool_calls[0]
@@ -291,20 +300,91 @@ def run_main_loop(
         content = (getattr(message, "content", None) or "").strip()
         logger.info("Model content preview at step {}: {}", step, _preview_text(content))
 
-        if content and _user_request_requires_file_write(messages, tool_defs):
-            logger.warning(
-                "Edit request returned direct content instead of a write tool call; enforcing retry"
-            )
-            if not _has_system_note(messages, WRITE_ENFORCEMENT_TEXT):
+        if tool_defs:
+            if not content:
+                logger.warning("Model returned empty assistant content while tools are enabled")
                 messages, total_tokens = append_message(
                     messages,
-                    {"role": "system", "content": WRITE_ENFORCEMENT_TEXT},
+                    {"role": "system", "content": INVALID_STRUCTURED_RESPONSE_TEXT},
                     total_tokens,
                     keep_last=keep_last,
                     model=model,
                     auto_trim=True,
                 )
                 continue
+
+            try:
+                structured_response = parse_assistant_response(content)
+            except ValueError as exc:
+                logger.warning("Invalid structured assistant response: {}", str(exc))
+                if not _has_system_note(messages, STRUCTURED_RESPONSE_PROTOCOL_TEXT):
+                    messages, total_tokens = append_message(
+                        messages,
+                        {"role": "system", "content": STRUCTURED_RESPONSE_PROTOCOL_TEXT},
+                        total_tokens,
+                        keep_last=keep_last,
+                        model=model,
+                        auto_trim=True,
+                    )
+                messages, total_tokens = append_message(
+                    messages,
+                    {"role": "system", "content": INVALID_STRUCTURED_RESPONSE_TEXT},
+                    total_tokens,
+                    keep_last=keep_last,
+                    model=model,
+                    auto_trim=True,
+                )
+                continue
+
+            if (
+                structured_response.kind != "tool_call"
+                and _user_request_requires_file_write(messages, tool_defs)
+            ):
+                logger.warning(
+                    "Edit request returned a user-facing message instead of a write tool call; enforcing retry"
+                )
+                if not _has_system_note(messages, WRITE_ENFORCEMENT_TEXT):
+                    messages, total_tokens = append_message(
+                        messages,
+                        {"role": "system", "content": WRITE_ENFORCEMENT_TEXT},
+                        total_tokens,
+                        keep_last=keep_last,
+                        model=model,
+                        auto_trim=True,
+                    )
+                    continue
+
+            messages, total_tokens = _append_assistant_message(
+                messages,
+                total_tokens,
+                keep_last=keep_last,
+                model=model,
+                content=content,
+            )
+
+            if structured_response.kind == "tool_call":
+                tagged_call = _build_synthetic_tool_call(structured_response, step)
+                messages, total_tokens = handle_tool_call(
+                    tagged_call,
+                    structured_response.name,
+                    structured_response.arguments,
+                    tools,
+                    messages,
+                    total_tokens,
+                    keep_last=keep_last,
+                    model=model,
+                )
+                continue
+
+            display_text = structured_response.message
+            logger.info(
+                "Returning structured assistant message at step {}: {}",
+                step,
+                _preview_text(display_text),
+            )
+            if echo_output:
+                print(display_text)
+            return step, display_text, messages, total_tokens
 
         messages, total_tokens = append_message(
             messages,
@@ -315,51 +395,8 @@ def run_main_loop(
             auto_trim=True,
         )
 
-        final_text = parse_final(content)
-        if final_text is not None:
-            logger.info("Task completed with final tag")
-            logger.info("Final tag content preview: {}", _preview_text(final_text))
-            if echo_output:
-                print(final_text)
-            return step, content, messages, total_tokens
-
-        try:
-            maybe_tool_call = parse_tool_call(content)
-        except ValueError as exc:
-            logger.error("Malformed tagged tool call: {}", str(exc))
-            messages, total_tokens = append_message(
-                messages,
-                {"role": "system", "content": INVALID_TOOL_CALL_JSON_TEXT},
-                total_tokens,
-                keep_last=keep_last,
-                model=model,
-                auto_trim=True,
-            )
-            continue
-
-        if maybe_tool_call:
-            name, args = maybe_tool_call
-            tagged_call = ToolCall(
-                id=f"tagged_call_{step}",
-                function=ToolFunction(
-                    name=name,
-                    arguments=json.dumps(args, ensure_ascii=False) if isinstance(args, dict) else str(args),
-                ),
-            )
-            messages, total_tokens = handle_tool_call(
-                tagged_call,
-                name,
-                args,
-                tools,
-                messages,
-                total_tokens,
-                keep_last=keep_last,
-                model=model,
-            )
-            continue
-
         if content:
-            logger.info("Returning assistant content without final tag: {}", _preview_text(content))
+            logger.info("Returning assistant content without tools: {}", _preview_text(content))
             if echo_output:
                 print(content)
             return step, content, messages, total_tokens
