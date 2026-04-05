@@ -39,6 +39,7 @@ pip-wheel-metadata/
 test/output/
 test/testfiles/
 test/test.png
+artifacts/
 
 # OS files
 .DS_Store
