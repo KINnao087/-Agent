@@ -23,7 +23,7 @@ logger = get_logger("contract-integrity-review")
 
 
 def build_integrity_user_message(page_texts: list[ContractPageText]) -> str:
-    """Build the prompt for contract integrity review."""
+    """构造合同完整性审核提示词。"""
     pages_text = "\n\n".join(
         f"第{item.page_index}页：\n{item.page_text}"
         for item in page_texts
@@ -94,7 +94,7 @@ def build_seal_integrity_user_message(
     page_texts: list[ContractPageText],
     candidates: list[SealCandidate],
 ) -> str:
-    """Build the multimodal prompt for seal review."""
+    """构造签章审核的多模态提示词。"""
     pages_text = "\n\n".join(
         f"第{item.page_index}页：\n{item.page_text}"
         for item in page_texts
@@ -432,7 +432,7 @@ def review_contract_seal_integrity(
     page_texts: list[ContractPageText],
     seal_candidates: list[SealCandidate],
 ) -> ContractSealIntegrityResult:
-    """Review all detected seal candidates with a multimodal model."""
+    """使用多模态模型审核全部印章候选区域。"""
     if not seal_candidates:
         return ContractSealIntegrityResult()
 
@@ -463,7 +463,7 @@ def review_contract_seal_integrity(
 def review_contract_integrity(
     page_texts: list[ContractPageText],
 ) -> ContractIntegrityResult:
-    """Review text-level integrity for a contract."""
+    """执行基于文本的合同完整性审核。"""
     reply_text = run_message_and_get_reply(
         user_message=build_integrity_user_message(page_texts)
     )

@@ -1,2 +1,1 @@
-"""Domain models and rules."""
-
+"""领域模型与业务规则。"""

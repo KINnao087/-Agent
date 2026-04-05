@@ -1,4 +1,4 @@
-"""Document processing application services."""
+"""文档处理相关的应用服务。"""
 
 from .linearize_service import LinearizeDocumentsResult, linearize_documents
 from .ocr_payload import build_ocr_payload
@@ -11,4 +11,3 @@ __all__ = [
     "linearize_documents",
     "parse_documents_to_structured_json",
 ]
-

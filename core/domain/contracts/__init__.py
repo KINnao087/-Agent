@@ -1,4 +1,4 @@
-"""Contract domain models and rules."""
+"""合同领域模型与业务规则。"""
 
 from .compare import build_summary, compare_basic_info
 from .integrity_models import (
@@ -20,4 +20,3 @@ __all__ = [
     "build_summary",
     "compare_basic_info",
 ]
-
