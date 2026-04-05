@@ -1,2 +1,1 @@
-"""Computer vision infrastructure."""
-
+"""计算机视觉基础设施。"""

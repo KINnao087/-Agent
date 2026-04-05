@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import re
+import subprocess
 import sys
+import threading
 import time
 from enum import Enum
 from pathlib import Path
@@ -33,12 +36,106 @@ class Color:
     BG_WHITE = "\033[47m"
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_LOG_DIR = _PROJECT_ROOT / "Log"
+_SESSION_STAMP = time.strftime("%Y%m%d-%H%M%S")
+_LATEST_LOG_PATH = _LOG_DIR / "latest.log"
+_SESSION_LOG_PATH = _LOG_DIR / f"session-{_SESSION_STAMP}.log"
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_LOG_LOCK = threading.RLock()
+_LOG_FILES_READY = False
+_TAIL_TERMINAL_STARTED = False
+
+
+def _strip_ansi(text: str) -> str:
+    """移除 ANSI 颜色控制符，避免写入日志文件的内容出现乱码。"""
+    return _ANSI_RE.sub("", text)
+
+
+def _session_banner() -> str:
+    """为每次进程启动生成一段日志头，便于区分不同运行会话。"""
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    return f"=== Log session started at {timestamp} ===\n"
+
+
+def _ensure_log_files() -> None:
+    """确保项目根目录下的 Log 目录和当前会话日志文件存在。"""
+    global _LOG_FILES_READY
+    with _LOG_LOCK:
+        if _LOG_FILES_READY:
+            return
+
+        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        banner = _session_banner()
+        _LATEST_LOG_PATH.write_text(banner, encoding="utf-8")
+        _SESSION_LOG_PATH.write_text(banner, encoding="utf-8")
+        _LOG_FILES_READY = True
+
+
+def _write_text_to_log_files(text: str) -> None:
+    """把日志文本同时写入 latest.log 和本次会话日志。"""
+    _ensure_log_files()
+    clean_text = _strip_ansi(text)
+    with _LOG_LOCK:
+        for path in (_LATEST_LOG_PATH, _SESSION_LOG_PATH):
+            with path.open("a", encoding="utf-8") as file:
+                file.write(clean_text)
+
+
+def get_log_dir() -> Path:
+    """返回项目日志目录。"""
+    _ensure_log_files()
+    return _LOG_DIR
+
+
+def get_latest_log_path() -> Path:
+    """返回 latest.log 的绝对路径。"""
+    _ensure_log_files()
+    return _LATEST_LOG_PATH
+
+
+def get_session_log_path() -> Path:
+    """返回当前进程会话日志的绝对路径。"""
+    _ensure_log_files()
+    return _SESSION_LOG_PATH
+
+
+def start_live_log_terminal() -> bool:
+    """在 Windows 上拉起一个新的 PowerShell 窗口，实时 tail latest.log。"""
+    global _TAIL_TERMINAL_STARTED
+    _ensure_log_files()
+
+    with _LOG_LOCK:
+        if _TAIL_TERMINAL_STARTED:
+            return False
+
+        escaped_path = str(_LATEST_LOG_PATH).replace("'", "''")
+        command = (
+            "$Host.UI.RawUI.WindowTitle = 'Contract Agent Logs'; "
+            f"if (-not (Test-Path '{escaped_path}')) "
+            f"{{ New-Item -ItemType File -Path '{escaped_path}' -Force | Out-Null }}; "
+            f"Write-Host 'Tailing {escaped_path}' -ForegroundColor Cyan; "
+            f"Get-Content -Path '{escaped_path}' -Wait -Tail 30"
+        )
+
+        try:
+            subprocess.Popen(
+                ["powershell.exe", "-NoExit", "-Command", command],
+                creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+            )
+        except Exception:
+            return False
+
+        _TAIL_TERMINAL_STARTED = True
+        return True
+
+
 class Logger:
     def __init__(self, name: str = "agent"):
-        """初始化一个带默认控制台行为的具名日志器。"""
+        """初始化一个同时支持终端输出和文件落盘的具名日志器。"""
         self.name = name
         self.level = LogLevel.INFO
-        self.enable_color = sys.stdout.isatty()
+        self.enable_color = sys.stderr.isatty()
         self.thinking_callback: Callable[[str], None] | None = None
         self.thinking_buffer = ""
 
@@ -109,13 +206,14 @@ class Logger:
             )
 
     def log(self, level: LogLevel, message: object, *args, **kwargs) -> None:
-        """在级别允许时渲染并输出一条日志。"""
+        """在级别允许时渲染并同时输出到终端和日志文件。"""
         if not self._should_log(level):
             return
 
         rendered = self._render_message(message, *args, **kwargs)
         formatted = self._format_message(level, rendered)
         print(formatted, file=sys.stderr)
+        _write_text_to_log_files(formatted + "\n")
 
     def debug(self, message: object, *args, **kwargs) -> None:
         """输出 DEBUG 级别日志。"""
@@ -150,8 +248,10 @@ class Logger:
         self.thinking_buffer = ""
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
         color = self._get_color(LogLevel.THINKING)
-        prefix = f"{color}[{timestamp}] [{LogLevel.THINKING.value}] [{self.name}] "
+        reset = Color.RESET if self.enable_color else ""
+        prefix = f"{color}[{timestamp}] [{LogLevel.THINKING.value}] [{self.name}] {reset}"
         print(prefix, end="", flush=True)
+        _write_text_to_log_files(prefix)
 
     def stream_thinking(self, chunk: str) -> None:
         """向当前思考流追加一段文本。"""
@@ -160,6 +260,7 @@ class Logger:
 
         self.thinking_buffer += chunk
         print(chunk, end="", flush=True)
+        _write_text_to_log_files(chunk)
         if self.thinking_callback:
             self.thinking_callback(chunk)
 
@@ -167,6 +268,7 @@ class Logger:
         """结束当前思考流并清空缓冲内容。"""
         reset = Color.RESET if self.enable_color else ""
         print(reset, flush=True)
+        _write_text_to_log_files("\n")
         if self.thinking_callback and self.thinking_buffer:
             self.thinking_callback(self.thinking_buffer)
         self.thinking_buffer = ""
