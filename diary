@@ -132,3 +132,13 @@ day8:
     将之前的功能写进了skill并做了兼容
 
 day9:
+    开始整理科技合同真实性核对所需的企查查接口爬取方案，目标是先按公司名称获取 company_key，再补齐企业详情与用户态信息。
+    已确认企查查动态请求头仍沿用同一套加密逻辑，签名参数为小写 path 加实际 payload，x-pid 和 tid 需要先从页面中提取。
+
+    已定位并验证当前关键接口：
+      - /api/batch/getBatchFollowKeyNo：通过公司名换取主体 KeyNo / company_key
+      - /api/company/getDetail：获取企业主体详情，包含名称、法人、地址、行业、经营范围、联系方式、标签等核心字段
+      - /api/user/getUserCompanyInfo：通过 keynos 获取用户态公司信息
+
+    已确认单纯访问 firm 详情页 HTML 还不够，除了页面中的 window.__INITIAL_STATE__ 之外，后续还需要继续补抓详情页触发的 /api/company/*、/api/datalist/* 等接口。
+    下一步准备按科技合同真实性字段清单，整理接口字段到合同字段的映射关系，并补充高企、上市、企业规模等标签判断逻辑。
