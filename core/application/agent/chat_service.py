@@ -9,6 +9,7 @@ from core.application.documents import linearize_documents, parse_documents_to_s
 from core.infrastructure.ai import AgentRunner, ConversationSession, load_agent_config
 from core.infrastructure.ai.logger import get_logger
 from core.infrastructure.text import pdf2png
+from core.infrastructure.web_searcher.searcher import tavliy_search
 
 logger = get_logger("cli-chat-service")
 
@@ -25,6 +26,7 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - pdf2pngs：将单个 PDF 文件转换为 PNG 图片列表。
 - parse_documents：把合同、附件、发票解析成结构化 JSON。
 - linearize_documents：把合同、附件、发票线性化成文本文件。
+- tavliy_search：根据查询词执行网页搜索，并返回搜索结果字典。
 
 输出协议：
 1. 如果你要调用工具，优先直接发起原生 tool call。
@@ -127,6 +129,29 @@ def _build_tool_defs() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "tavliy_search",
+                "description": "根据查询词执行网页搜索，并返回搜索结果字典。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "搜索关键词。"
+                        },
+                        "sdepth": {
+                            "type": "string",
+                            "description": "搜索深度，默认是 advanced。包括'basic', 'advanced', 'fast', 'ultra-fast'",
+                            "default": "advanced"
+                        }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False
+                }
+            }
+        },
     ]
 
 
@@ -213,6 +238,19 @@ def _tool_pdf2pngs(
     return {"ok": True, "output": json.dumps(payload, ensure_ascii=False, indent=2)}
 
 
+def _tool_tavliy_search(
+    query: str | None = None,
+    sdepth: str = "advanced",
+) -> dict[str, str]:
+    final_query = query
+    if not final_query:
+        return {"ok": False, "output": "missing required search query"}
+    result = tavliy_search(q=final_query, sdepth=sdepth)
+    return {
+        "ok": True,
+        "output": json.dumps(result, ensure_ascii=False, indent=2),
+    }
+
 def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
     """在原始模型配置上叠加 shell 专用 prompt 和工具目录。"""
     config = load_agent_config(config_path)
@@ -231,6 +269,7 @@ def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
         "pdf2pngs": _tool_pdf2pngs,
         "parse_documents": _tool_parse_documents,
         "linearize_documents": _tool_linearize_documents,
+        "tavliy_search": _tool_tavliy_search,
     }
     return AgentRunner(config=runtime_config, tools=tools)
 
