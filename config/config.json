@@ -5,7 +5,7 @@
   "tool_defs": [],
   "api": {
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "api_key": "sk-7c8d473b6bc4491baec27e87d3c07a18",
+    "api_key": null,
     "temperature": 0.2
   }
 }

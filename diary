@@ -128,3 +128,59 @@ day7:
 
 day8:
     接下来准备实现cli对话。使用一个控制ai用来和用户对话并将用户的自然语言转换成程序内部语言
+    修改了ai输出格式，使用json来进行程序内部通信。
+    将之前的功能写进了skill并做了兼容
+
+day9:
+    开始整理科技合同真实性核对所需的企查查接口爬取方案，目标是先按公司名称获取 company_key，再补齐企业详情与用户态信息。
+    已确认企查查动态请求头仍沿用同一套加密逻辑，签名参数为小写 path 加实际 payload，x-pid 和 tid 需要先从页面中提取。
+
+    已定位并验证当前关键接口：
+      - /api/batch/getBatchFollowKeyNo：通过公司名换取主体 KeyNo / company_key
+      - /api/company/getDetail：获取企业主体详情，包含名称、法人、地址、行业、经营范围、联系方式、标签等核心字段
+      - /api/user/getUserCompanyInfo：通过 keynos 获取用户态公司信息
+
+    已确认单纯访问 firm 详情页 HTML 还不够，除了页面中的 window.__INITIAL_STATE__ 之外，后续还需要继续补抓详情页触发的 /api/company/*、/api/datalist/* 等接口。
+    下一步准备按科技合同真实性字段清单，整理接口字段到合同字段的映射关系，并补充高企、上市、企业规模等标签判断逻辑。
+
+day10:
+    补充整理了企查查 scraper 中新增的爬取入口，并统一了用途说明，便于后续把企业真实性字段映射到合同核验字段。
+
+    新增函数如下：
+      - get_company_key(company_name, cookie_header=None)
+        用处：按公司名称获取企查查主体 KeyNo，作为后续详情接口的主键。
+
+      - get_company_info(ckeyno, cookie_header=None)
+        用处：抓取公司详情页原始 HTML，用于调试页面结构、检查页面内初始化数据和前端资源引用。
+
+      - get_company_detail(keyno, cookie_header=None)
+        用处：调用 /api/company/getDetail，获取企业主体详情主数据，包含名称、法人、地址、标签、联系方式等核心字段。
+
+      - get_company_industry_profile(keyno, cookie_header=None)
+        用处：调用 /api/customDetail/getIndustry，补充行业、企业规模、经营范围、注册资本、成立时间等信息。
+
+      - get_company_phone_profile(keyno, from_page="search", cookie_header=None)
+        用处：调用 /api/customDetail/getPhone，获取 ContactInfo、历史电话、同电话地址关系以及经办相关标签信息。
+
+      - get_company_employee_list(keyno, cookie_header=None)
+        用处：调用 /api/company/getEmployeeList，获取企业相关人员列表，为经办人、联系人等字段补充候选数据。
+
+      - get_company_location(keyno, cookie_header=None)
+        用处：调用 /api/company/getLocation，获取地图定位和地址坐标相关信息。
+
+      - get_zone_park_detail(params, cookie_header=None)
+        用处：调用 /api/more/getZoneParkDetail，作为高新区 / 园区相关信息的补充入口。
+
+      - get_zone_park_company_detail(params, cookie_header=None)
+        用处：调用 /api/more/getZoneParkCompanyDetail，进一步判断企业是否关联某类园区或高新区。
+
+      - get_company_snapshot(keyno, cookie_header=None)
+        用处：聚合调用 detail、industry、phone、employees、location 五组接口，一次性拉取企业快照，方便后续统一解析。
+
+    同时补充了底层能力：
+      - 自动处理 acw_sc__v2 WAF 挑战
+      - 支持通过 QCC_COOKIE 注入浏览器登录态
+      - 未登录时统一抛出明确错误，避免接口静默失败
+
+    当前限制：
+      企查查详情相关接口实测都需要用户登录，匿名请求会返回“使用该功能需要用户登录”，后续调试必须带有效 QCC_COOKIE。
