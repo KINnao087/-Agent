@@ -239,6 +239,37 @@ def _build_synthetic_tool_call(response: AssistantResponse, step: int) -> ToolCa
         ),
     )
 
+def _handle_tool_calls(tool_calls: list[ToolCall], messages: list[dict], total_tokens: int, keep_last: int, model, message, tools: ToolMap):
+    logger = get_logger("ai-tool-calls")
+    logger.info(
+        "Model requested {} tool call(s), assistant content preview: {}",
+        len(tool_calls),
+        _preview_text(getattr(message, "content", "") or ""),
+    )
+    messages, total_tokens = _append_assistant_message(
+        messages,
+        total_tokens,
+        keep_last=keep_last,
+        model=model,
+        content=message.content or "",
+        tool_calls=tool_calls,
+    )
+
+    for tool_call in tool_calls:
+        name = tool_call.function.name
+        args = tool_call.function.arguments or "{}"
+        logger.info("Executing first tool call: {}", name)
+        messages, total_tokens = handle_tool_call(
+            tool_call,
+            name,
+            args,
+            tools,
+            messages,
+            total_tokens,
+            keep_last=keep_last,
+            model=model,
+        )
+
 
 def run_main_loop(
     client,
@@ -267,34 +298,7 @@ def run_main_loop(
 
         tool_calls = getattr(message, "tool_calls", None) or []
         if tool_calls:
-            logger.info(
-                "Model requested {} tool call(s), assistant content preview: {}",
-                len(tool_calls),
-                _preview_text(getattr(message, "content", "") or ""),
-            )
-            messages, total_tokens = _append_assistant_message(
-                messages,
-                total_tokens,
-                keep_last=keep_last,
-                model=model,
-                content=message.content or "",
-                tool_calls=tool_calls,
-            )
-
-            tool_call = tool_calls[0]
-            name = tool_call.function.name
-            args = tool_call.function.arguments or "{}"
-            logger.info("Executing first tool call: {}", name)
-            messages, total_tokens = handle_tool_call(
-                tool_call,
-                name,
-                args,
-                tools,
-                messages,
-                total_tokens,
-                keep_last=keep_last,
-                model=model,
-            )
+            _handle_tool_calls(tool_calls, messages, total_tokens, keep_last, model, message, tools)
             continue
 
         content = (getattr(message, "content", None) or "").strip()
