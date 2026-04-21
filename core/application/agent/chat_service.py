@@ -835,7 +835,7 @@ class CliChatService:
     runner: AgentRunner
     session: ConversationSession
 
-    def ask(self, message: str, max_steps: int = 8) -> str:
+    def ask(self, message: str, max_steps: int = 20) -> str:
         """执行一轮 shell 对话，并返回最终展示给用户的文本。"""
         logger.info("CLI shell received message: {}", message)
         reply, self.session = self.runner.run_and_get_reply(

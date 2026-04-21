@@ -19,6 +19,7 @@ from core.application.agent.chat_service import (
     _tool_writefile,
 )
 from core.infrastructure.ai.agent_loop import _handle_tool_calls, handle_tool_call
+from core.infrastructure.ai.message_store import trim_messages
 from core.infrastructure.ai.providers import ToolCall, ToolFunction
 
 
@@ -185,3 +186,33 @@ def test_native_multi_tool_calls_defer_image_messages_until_tool_results_complet
     assert messages[1]["tool_call_id"] == "call_image"
     assert messages[2]["tool_call_id"] == "call_ls"
     assert messages[3]["content"][1]["type"] == "image_url"
+
+
+def test_trim_messages_preserves_latest_user_for_provider_compatibility() -> None:
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "please call a tool"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_big",
+                    "type": "function",
+                    "function": {"name": "readfile", "arguments": '{"path":"big.txt"}'},
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_big",
+            "name": "readfile",
+            "content": "x" * 2000,
+        },
+    ]
+
+    trimmed = trim_messages(messages, keep_last=100, model="gpt-4o")
+
+    roles = [message["role"] for message in trimmed]
+    assert "user" in roles
+    assert roles[-2:] == ["assistant", "tool"]
