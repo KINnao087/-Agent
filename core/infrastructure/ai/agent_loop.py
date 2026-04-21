@@ -17,7 +17,7 @@ EDIT_INTENT_RE = re.compile(
 QUESTION_INTENT_RE = re.compile(r"(\bhow\b|\bwhy\b|\?|怎么|如何|为什么)", re.I)
 WRITE_ENFORCEMENT_TEXT = (
     "The user requested a file modification. You must use a tool_call to apply the change. "
-    "If write_file is available, use write_file instead of pasting modified code directly."
+    "If writefile or write_file is available, use it instead of pasting modified code directly."
 )
 STRUCTURED_RESPONSE_PROTOCOL_TEXT = (
     "When tools are available, every non-tool assistant reply must be a single JSON object only. "
@@ -75,7 +75,8 @@ def _user_request_requires_file_write(messages: list[dict], tool_defs: list[dict
         return False
     if QUESTION_INTENT_RE.search(latest_user):
         return False
-    return "write_file" in _tool_names(tool_defs)
+    names = _tool_names(tool_defs)
+    return "writefile" in names or "write_file" in names
 
 
 def _has_system_note(messages: list[dict], note: str) -> bool:
@@ -258,7 +259,7 @@ def _handle_tool_calls(tool_calls: list[ToolCall], messages: list[dict], total_t
     for tool_call in tool_calls:
         name = tool_call.function.name
         args = tool_call.function.arguments or "{}"
-        logger.info("Executing first tool call: {}", name)
+        logger.info("Executing tool call: {}", name)
         messages, total_tokens = handle_tool_call(
             tool_call,
             name,
@@ -269,6 +270,7 @@ def _handle_tool_calls(tool_calls: list[ToolCall], messages: list[dict], total_t
             keep_last=keep_last,
             model=model,
         )
+    return messages, total_tokens
 
 
 def run_main_loop(
@@ -298,7 +300,15 @@ def run_main_loop(
 
         tool_calls = getattr(message, "tool_calls", None) or []
         if tool_calls:
-            _handle_tool_calls(tool_calls, messages, total_tokens, keep_last, model, message, tools)
+            messages, total_tokens = _handle_tool_calls(
+                tool_calls,
+                messages,
+                total_tokens,
+                keep_last,
+                model,
+                message,
+                tools,
+            )
             continue
 
         content = (getattr(message, "content", None) or "").strip()
