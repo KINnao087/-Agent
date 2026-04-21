@@ -28,7 +28,7 @@ def tavliy_search(q: str, sdepth: str = "advanced") -> dict:
     #     "request_id": "mock",
     # }
 
-    return client.search(query = q, search_septh=sdepth)
+    return client.search(query=q, search_depth=sdepth)
 
 
 def main():

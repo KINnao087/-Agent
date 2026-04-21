@@ -17,7 +17,7 @@ EDIT_INTENT_RE = re.compile(
 QUESTION_INTENT_RE = re.compile(r"(\bhow\b|\bwhy\b|\?|怎么|如何|为什么)", re.I)
 WRITE_ENFORCEMENT_TEXT = (
     "The user requested a file modification. You must use a tool_call to apply the change. "
-    "If write_file is available, use write_file instead of pasting modified code directly."
+    "If writefile or write_file is available, use it instead of pasting modified code directly."
 )
 STRUCTURED_RESPONSE_PROTOCOL_TEXT = (
     "When tools are available, every non-tool assistant reply must be a single JSON object only. "
@@ -46,12 +46,32 @@ def _preview_text(value: object, limit: int = 300) -> str:
     return text if len(text) <= limit else text[:limit] + "...(truncated)"
 
 
+def _content_to_text(content: Any) -> str:
+    """Extract text from string or multimodal message content without dumping image data."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                item_type = item.get("type")
+                if item_type == "text":
+                    parts.append(str(item.get("text", "")))
+                elif item_type == "image_url":
+                    parts.append("[image_url]")
+                else:
+                    parts.append(str({key: value for key, value in item.items() if key != "image_url"}))
+            elif item is not None:
+                parts.append(str(item))
+        return "\n".join(part for part in parts if part)
+    return "" if content is None else str(content)
+
+
 def _latest_user_text(messages: list[dict]) -> str:
     """返回最近一条用户消息的纯文本内容。"""
     for message in reversed(messages):
         if message.get("role") == "user":
-            content = message.get("content")
-            return content if isinstance(content, str) else str(content or "")
+            return _content_to_text(message.get("content"))
     return ""
 
 
@@ -75,7 +95,8 @@ def _user_request_requires_file_write(messages: list[dict], tool_defs: list[dict
         return False
     if QUESTION_INTENT_RE.search(latest_user):
         return False
-    return "write_file" in _tool_names(tool_defs)
+    names = _tool_names(tool_defs)
+    return "writefile" in names or "write_file" in names
 
 
 def _has_system_note(messages: list[dict], note: str) -> bool:
@@ -93,10 +114,49 @@ def _normalize_tool_result(result: Any) -> dict[str, Any]:
         output = result.get("output")
         if output is None:
             output = result.get("error", "")
-        return {"ok": ok, "output": "" if output is None else str(output)}
+        normalized: dict[str, Any] = {"ok": ok, "output": "" if output is None else str(output)}
+        image_url = result.get("image_url") or result.get("data_url")
+        if image_url:
+            normalized["image_url"] = str(image_url)
+        image_name = result.get("image_name") or result.get("name")
+        if image_name:
+            normalized["image_name"] = str(image_name)
+        image_path = result.get("image_path") or result.get("path")
+        if image_path:
+            normalized["image_path"] = str(image_path)
+        image_mime_type = result.get("image_mime_type") or result.get("mime_type")
+        if image_mime_type:
+            normalized["image_mime_type"] = str(image_mime_type)
+        return normalized
     if result is None:
         return {"ok": True, "output": ""}
     return {"ok": True, "output": str(result)}
+
+
+def _build_image_user_message(tool_name: str, result: dict[str, Any]) -> dict[str, Any] | None:
+    """Create a multimodal user message for image data returned by a tool."""
+    image_url = str(result.get("image_url") or "").strip()
+    if not image_url:
+        return None
+
+    image_name = str(result.get("image_name") or f"{tool_name}_image")
+    image_path = str(result.get("image_path") or "")
+    image_mime_type = str(result.get("image_mime_type") or "")
+    text = (
+        f"Tool {tool_name} returned image data for {image_name}"
+        f"{f' ({image_mime_type})' if image_mime_type else ''}. "
+        "Use the attached image_url as the image input. Do not treat encoded image data as ordinary prose."
+    )
+    if image_path:
+        text += f" Source path: {image_path}"
+
+    return {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": text},
+            {"type": "image_url", "image_url": {"url": image_url}},
+        ],
+    }
 
 
 def _append_assistant_message(
@@ -141,6 +201,7 @@ def handle_tool_call(
     total_tokens: int,
     keep_last: int,
     model: str,
+    image_messages: list[dict[str, Any]] | None = None,
 ):
     """执行一次工具调用并把结果追加回消息历史。"""
     logger = get_logger("ai-loop")
@@ -226,6 +287,24 @@ def handle_tool_call(
         model=model,
         auto_trim=True,
     )
+    image_message = _build_image_user_message(name, result)
+    if image_message is not None:
+        if image_messages is None:
+            messages, total_tokens = append_message(
+                messages,
+                image_message,
+                total_tokens,
+                keep_last=keep_last,
+                model=model,
+                auto_trim=True,
+            )
+        else:
+            image_messages.append(image_message)
+        logger.info(
+            "Tool {} image result attached as image_url, source={}",
+            name,
+            result.get("image_path") or result.get("image_name") or "",
+        )
     return messages, total_tokens
 
 
@@ -255,10 +334,11 @@ def _handle_tool_calls(tool_calls: list[ToolCall], messages: list[dict], total_t
         tool_calls=tool_calls,
     )
 
+    deferred_image_messages: list[dict[str, Any]] = []
     for tool_call in tool_calls:
         name = tool_call.function.name
         args = tool_call.function.arguments or "{}"
-        logger.info("Executing first tool call: {}", name)
+        logger.info("Executing tool call: {}", name)
         messages, total_tokens = handle_tool_call(
             tool_call,
             name,
@@ -268,7 +348,19 @@ def _handle_tool_calls(tool_calls: list[ToolCall], messages: list[dict], total_t
             total_tokens,
             keep_last=keep_last,
             model=model,
+            image_messages=deferred_image_messages,
         )
+
+    for image_message in deferred_image_messages:
+        messages, total_tokens = append_message(
+            messages,
+            image_message,
+            total_tokens,
+            keep_last=keep_last,
+            model=model,
+            auto_trim=True,
+        )
+    return messages, total_tokens
 
 
 def run_main_loop(
@@ -298,7 +390,15 @@ def run_main_loop(
 
         tool_calls = getattr(message, "tool_calls", None) or []
         if tool_calls:
-            _handle_tool_calls(tool_calls, messages, total_tokens, keep_last, model, message, tools)
+            messages, total_tokens = _handle_tool_calls(
+                tool_calls,
+                messages,
+                total_tokens,
+                keep_last,
+                model,
+                message,
+                tools,
+            )
             continue
 
         content = (getattr(message, "content", None) or "").strip()
