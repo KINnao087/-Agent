@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from urllib.parse import unquote, urlparse
 
 from core.application.agent import create_cli_chat_service
 from core.infrastructure.ai import get_logger
@@ -29,12 +33,133 @@ def handle_shell_command(args: argparse.Namespace | None = None) -> int:
         return 0
 
 # 当前 shell 依赖 Textual，因此在模块加载阶段直接导入 UI 组件。
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 logger = get_logger("cli_shell")
+
+
+_PATH_TOKEN_RE = re.compile(
+    r"""
+    (?P<quoted>
+        (?P<quote>["'])
+        (?P<quoted_path>
+            (?:file:///.*?)
+            |
+            (?:[A-Za-z]:[\\/].*?)
+            |
+            (?:\\\\.*?)
+        )
+        (?P=quote)
+    )
+    |
+    (?P<bare>
+        file:///[^\s"'<>|]+
+        |
+        [A-Za-z]:[\\/][^\s"'<>|，；。]+
+        |
+        \\\\[^\s"'<>|，；。]+
+    )
+    """,
+    re.VERBOSE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCliMessage:
+    """CLI 输入在内部执行和界面展示时使用的两种形态。"""
+
+    agent_text: str
+    display_text: str
+
+
+def _clean_dragged_path(raw_path: str) -> str:
+    """把终端拖拽或粘贴进来的路径文本清理成普通文件系统路径。"""
+    text = raw_path.strip().strip('"\'')
+    if text.lower().startswith("file://"):
+        parsed = urlparse(text)
+        path = unquote(parsed.path)
+        if parsed.netloc:
+            return f"//{parsed.netloc}{path}"
+        if re.match(r"^/[A-Za-z]:/", path):
+            return path[1:]
+        return path
+    return text
+
+
+def _absolute_path_text(path_text: str) -> str:
+    """把输入路径转换为绝对路径字符串，不要求路径当前一定存在。"""
+    cleaned = _clean_dragged_path(path_text)
+    return str(Path(cleaned).expanduser().resolve(strict=False))
+
+
+def _file_display_name(path_text: str) -> str:
+    """返回路径用于界面展示的短名称。"""
+    cleaned = _clean_dragged_path(path_text)
+    if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", cleaned):
+        name = PureWindowsPath(cleaned).name
+    else:
+        name = Path(cleaned).name
+    return name or cleaned
+
+
+def prepare_cli_message(raw_message: str) -> PreparedCliMessage:
+    """把用户输入中的文件路径转成绝对路径，同时生成短路径展示文本。"""
+    normalized_parts: list[str] = []
+    display_parts: list[str] = []
+    cursor = 0
+
+    for match in _PATH_TOKEN_RE.finditer(raw_message):
+        start, end = match.span()
+        path_text = match.group("quoted_path") or match.group("bare") or ""
+        if not path_text:
+            continue
+
+        normalized_parts.append(raw_message[cursor:start])
+        display_parts.append(raw_message[cursor:start])
+
+        absolute_path = _absolute_path_text(path_text)
+        normalized_parts.append(f'"{absolute_path}"')
+        display_parts.append(f"[{_file_display_name(path_text)}]")
+        cursor = end
+
+    normalized_parts.append(raw_message[cursor:])
+    display_parts.append(raw_message[cursor:])
+    return PreparedCliMessage(
+        agent_text="".join(normalized_parts).strip(),
+        display_text="".join(display_parts).strip(),
+    )
+
+
+def format_paths_for_display(text: str) -> str:
+    """把任意文本里的绝对路径压缩成 [文件名]，用于聊天窗口展示。"""
+    return prepare_cli_message(text).display_text
+
+
+def normalize_paste_for_input(text: str) -> str:
+    """把粘贴或终端拖入的路径文本转换成适合单行输入框的文本。"""
+    compact_text = " ".join((text or "").splitlines()).strip()
+    if not compact_text:
+        return ""
+    return prepare_cli_message(compact_text).agent_text
+
+
+class PathInput(Input):
+    """支持把终端粘贴进来的文件路径规范化成绝对路径。"""
+
+    def on_paste(self, event: events.Paste) -> None:
+        pasted_text = normalize_paste_for_input(event.text)
+        if not pasted_text:
+            event.prevent_default()
+            event.stop()
+            return
+
+        self.insert_text_at_cursor(pasted_text)
+        event.prevent_default()
+        event.stop()
+
 
 class ContractCliShell(App[None]):
     TITLE = "Contract Agent Shell"
@@ -73,7 +198,7 @@ class ContractCliShell(App[None]):
         yield Header(show_clock=True)
         yield RichLog(id="chat-log", wrap=True, markup=False, highlight=False)
         yield Static("状态: 空闲", id="status")
-        yield Input(
+        yield PathInput(
             placeholder="输入问题，或直接描述要处理的合同文件路径和需求...",
             id="prompt",
         )
@@ -116,19 +241,20 @@ class ContractCliShell(App[None]):
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
         # 提交后先锁住输入框，避免后台任务还没结束时重复发送。
-        message = event.value.strip()
-        if not message:
+        raw_message = event.value.strip()
+        if not raw_message:
             return
 
-        if message.lower() in {"exit", "quit", ":q"}:
+        if raw_message.lower() in {"exit", "quit", ":q"}:
             self.exit()
             return
 
+        message = prepare_cli_message(raw_message)
         event.input.value = ""
         event.input.disabled = True
-        self._append_user(message)
+        self._append_user(message.display_text)
         self._set_status("AI 正在处理...")
-        self.run_chat_turn(message)
+        self.run_chat_turn(message.agent_text)
 
     @work(thread=True, exclusive=True)
     def run_chat_turn(self, message: str) -> None:
@@ -138,7 +264,7 @@ class ContractCliShell(App[None]):
         except Exception as exc:
             self.call_from_thread(self._append_system, f"处理失败: {exc}")
         else:
-            self.call_from_thread(self._append_assistant, reply)
+            self.call_from_thread(self._append_assistant, format_paths_for_display(reply))
         finally:
             self.call_from_thread(self._set_status, "空闲")
             self.call_from_thread(self._reset_input)

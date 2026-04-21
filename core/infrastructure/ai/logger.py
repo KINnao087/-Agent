@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import inspect
 import re
 import subprocess
@@ -47,6 +48,30 @@ _LOG_FILES_READY = False
 _TAIL_TERMINAL_STARTED = False
 
 
+def _configure_stdio_utf8() -> None:
+    """尽量把当前 Python 进程的控制台输入输出固定为 UTF-8。"""
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
+_configure_stdio_utf8()
+
+
 def _strip_ansi(text: str) -> str:
     """移除 ANSI 颜色控制符，避免写入日志文件的内容出现乱码。"""
     return _ANSI_RE.sub("", text)
@@ -67,8 +92,14 @@ def _ensure_log_files() -> None:
 
         _LOG_DIR.mkdir(parents=True, exist_ok=True)
         banner = _session_banner()
-        _LATEST_LOG_PATH.write_text(banner, encoding="utf-8")
-        _SESSION_LOG_PATH.write_text(banner, encoding="utf-8")
+        try:
+            _LATEST_LOG_PATH.write_text(banner, encoding="utf-8")
+        except PermissionError:
+            pass
+        try:
+            _SESSION_LOG_PATH.write_text(banner, encoding="utf-8")
+        except PermissionError:
+            pass
         _LOG_FILES_READY = True
 
 
@@ -78,8 +109,11 @@ def _write_text_to_log_files(text: str) -> None:
     clean_text = _strip_ansi(text)
     with _LOG_LOCK:
         for path in (_LATEST_LOG_PATH, _SESSION_LOG_PATH):
-            with path.open("a", encoding="utf-8") as file:
-                file.write(clean_text)
+            try:
+                with path.open("a", encoding="utf-8") as file:
+                    file.write(clean_text)
+            except PermissionError:
+                continue
 
 
 def get_log_dir() -> Path:
@@ -111,16 +145,20 @@ def start_live_log_terminal() -> bool:
 
         escaped_path = str(_LATEST_LOG_PATH).replace("'", "''")
         command = (
+            "chcp.com 65001 > $null; "
+            "try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; "
+            "try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}; "
+            "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}; "
             "$Host.UI.RawUI.WindowTitle = 'Contract Agent Logs'; "
             f"if (-not (Test-Path '{escaped_path}')) "
             f"{{ New-Item -ItemType File -Path '{escaped_path}' -Force | Out-Null }}; "
             f"Write-Host 'Tailing {escaped_path}' -ForegroundColor Cyan; "
-            f"Get-Content -Path '{escaped_path}' -Wait -Tail 30"
+            f"Get-Content -Path '{escaped_path}' -Encoding UTF8 -Wait -Tail 30"
         )
 
         try:
             subprocess.Popen(
-                ["powershell.exe", "-NoExit", "-Command", command],
+                ["powershell.exe", "-NoProfile", "-NoExit", "-Command", command],
                 creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
             )
         except Exception:
