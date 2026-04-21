@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 try:
     import tiktoken
 except ImportError:
@@ -7,6 +9,7 @@ except ImportError:
 
 
 _TOKEN_ENCODINGS: dict[str, object] = {}
+_IMAGE_URL_TOKEN_BUDGET = 1024
 
 
 def get_token_encoding(model: str):
@@ -43,6 +46,36 @@ def estimate_tokens(text: str, model: str) -> int:
         return max(1, int(tokens + 0.5))
 
 
+def _estimate_content_tokens(content: Any, model: str) -> int:
+    """Estimate tokens for string or OpenAI-style multimodal message content."""
+    if not content:
+        return 0
+
+    if isinstance(content, str):
+        return estimate_tokens(content, model)
+
+    if isinstance(content, list):
+        total = 0
+        for item in content:
+            if isinstance(item, dict):
+                item_type = item.get("type")
+                if item_type == "text":
+                    total += estimate_tokens(str(item.get("text", "")), model)
+                    continue
+                if item_type == "image_url":
+                    total += _IMAGE_URL_TOKEN_BUDGET
+                    continue
+            total += estimate_tokens(str(item), model)
+        return total
+
+    if isinstance(content, dict):
+        if content.get("type") == "image_url" or "image_url" in content:
+            return _IMAGE_URL_TOKEN_BUDGET
+        return estimate_tokens(str(content), model)
+
+    return estimate_tokens(str(content), model)
+
+
 def count_message_tokens(message: dict, model: str) -> int:
     """估算一条消息在对话中的 token 开销。"""
     tokens = 0
@@ -51,7 +84,7 @@ def count_message_tokens(message: dict, model: str) -> int:
         tokens += estimate_tokens(message["role"], model)
 
     if "content" in message and message["content"]:
-        tokens += estimate_tokens(message["content"], model)
+        tokens += _estimate_content_tokens(message["content"], model)
 
     if "tool_calls" in message and message["tool_calls"]:
         for tool_call in message["tool_calls"]:
@@ -65,7 +98,7 @@ def count_message_tokens(message: dict, model: str) -> int:
 
     if "name" in message and "content" in message:
         tokens += estimate_tokens(message["name"], model)
-        tokens += estimate_tokens(message["content"], model)
+        tokens += _estimate_content_tokens(message["content"], model)
 
     tokens += 10
     return tokens
