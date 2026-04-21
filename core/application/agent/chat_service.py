@@ -11,6 +11,7 @@ from core.infrastructure.ai import parse_json_object, run_message_and_get_reply
 from core.infrastructure.ai.logger import get_logger
 from core.infrastructure.basetools.sys_cmds import ls as sys_ls
 from core.infrastructure.basetools.sys_cmds import readfile as sys_readfile
+from core.infrastructure.basetools.sys_cmds import readimage as sys_readimage
 from core.infrastructure.basetools.sys_cmds import writefile as sys_writefile
 from core.infrastructure.contracts.basic_info_extractor import extract_contract_basic_info
 from core.infrastructure.text import pdf2png
@@ -31,10 +32,12 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - pdf2pngs：将单个 PDF 文件转换为 PNG 图片列表。
 - parse_documents：把合同、附件、发票解析成结构化 JSON。
 - linearize_documents：把合同、附件、发票线性化成文本文件。
+- check_contract：对 PDF、PNG 或图片目录执行完整合同检查：OCR 线性化、抽取主体、搜索核验、判断双方公司信息真实性和可信风险。
 - tavliy_search：根据查询词执行网页搜索，并返回搜索结果字典。
 - review_contract_validity：读取线性化合同文本，搜索合同主体公开信息，并给出合同有效性风险判断。
 - ls：列出本机目录下的文件和子目录。
 - readfile：读取本机文本文件内容。
+- readimage：读取本机图片文件；工具消息返回摘要，并将图片作为 image_url 附加到下一轮模型输入。
 - writefile：向本机路径写入文本文件。
 
 输出协议：
@@ -49,6 +52,10 @@ CLI_SHELL_SYSTEM_PROMPT = """
 
 约束：
 - 不要编造文件路径、文件内容、工具结果或输出路径。
+- 不要声称自己不能读取图片；对于 PNG、PDF 或图片目录，调用 check_contract 或 linearize_documents，
+  工具会通过 OCR 读取图片内容。
+- 用户要求“检查合同图片/PDF/目录，并判断双方公司信息是否真实、是否可信”时，
+  必须优先调用 check_contract；不要先调用 pdf2pngs，也不要要求用户再提供图片路径。
 - 用户给的是单个 PDF 文件路径时，可以直接调用 parse_documents / linearize_documents，
   也可以先调用 pdf2pngs 再继续处理。
 - 需要线性化但用户没有指定输出目录时，允许直接调用 linearize_documents，
@@ -58,6 +65,8 @@ CLI_SHELL_SYSTEM_PROMPT = """
   如果没有明确线性化文件路径，优先使用上一轮 linearize_documents 返回的 contract_linearized.txt 路径。
 - 用户要求查看目录、读取文件或写入文件时，调用 ls / readfile / writefile；
   路径可以是绝对路径，也可以是相对当前工作目录的路径。
+- 用户明确要求读取单张图片原始数据时，调用 readimage；如果是合同图片文字识别或合同审核，
+  优先调用 check_contract / linearize_documents，而不是直接 readimage。
 - 用户只是咨询设计、实现思路或用法时，直接返回 to_user JSON，不必调用工具。
 - 回答默认使用中文，保持简洁。
 """.strip()
@@ -140,6 +149,41 @@ def _build_tool_defs() -> list[dict[str, Any]]:
                         },
                     },
                     "required": ["file_path"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_contract",
+                "description": "对 PDF、PNG 或图片目录执行完整合同检查：OCR 线性化、抽取合同主体、搜索主体公开信息、失信和经营异常，并判断双方公司信息真实性和可信风险。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_path": {
+                            "type": "string",
+                            "description": "合同输入路径，可以是单个 PDF、单个 PNG 或包含合同图片/PDF 的目录。",
+                        },
+                        "output_dir": {
+                            "type": "string",
+                            "description": "线性化文本输出目录，可选；默认使用输入路径所在目录下的 linearized_output。",
+                        },
+                        "attachments_path": {
+                            "type": "string",
+                            "description": "附件路径，可选。",
+                        },
+                        "invoice_path": {
+                            "type": "string",
+                            "description": "发票路径，可选。",
+                        },
+                        "search_enabled": {
+                            "type": "boolean",
+                            "description": "是否搜索合同主体公开信息、失信和经营异常，默认 true。",
+                            "default": True,
+                        },
+                    },
+                    "required": ["input_path"],
                     "additionalProperties": False,
                 },
             },
@@ -249,6 +293,34 @@ def _build_tool_defs() -> list[dict[str, Any]]:
                             "type": "integer",
                             "description": "最多读取多少个字符，默认 20000。",
                             "default": 20000,
+                        },
+                    },
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "readimage",
+                "description": "读取本机图片文件；工具消息返回 MIME 类型、大小等摘要，并将图片以 image_url 形式附加给下一轮模型。适合把单张图片交给 AI；合同图片 OCR/审核优先使用 check_contract 或 linearize_documents。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "要读取的图片路径。支持 png、jpg、jpeg、webp、bmp、gif。",
+                        },
+                        "max_bytes": {
+                            "type": "integer",
+                            "description": "允许读取的最大图片字节数，默认 6000000。",
+                            "default": 6000000,
+                        },
+                        "include_data_url": {
+                            "type": "boolean",
+                            "description": "是否生成用于 image_url 的 data URL，默认 true。",
+                            "default": True,
                         },
                     },
                     "required": ["path"],
@@ -493,10 +565,11 @@ def _tool_pdf2pngs(
     output_dir: str | None = None,
     input_path: str | None = None,
     input_file: str | None = None,
+    pdf_path: str | None = None,
     output_directory: str | None = None,
 ) -> dict[str, str]:
     """把单个 PDF 文件转换为图片序列。"""
-    final_file_path = _first_present(file_path, input_path, input_file)
+    final_file_path = _first_present(file_path, input_path, input_file, pdf_path)
     if not final_file_path:
         return {"ok": False, "output": "missing required argument: file_path"}
 
@@ -510,6 +583,52 @@ def _tool_pdf2pngs(
         "output_dir": str(Path(final_output_dir).resolve()),
         "page_count": len(png_paths),
         "png_paths": png_paths,
+    }
+    return {"ok": True, "output": json.dumps(payload, ensure_ascii=False, indent=2)}
+
+
+def _tool_check_contract(
+    input_path: str | None = None,
+    output_dir: str | None = None,
+    attachments_path: str | None = None,
+    invoice_path: str | None = None,
+    search_enabled: bool = True,
+    file_path: str | None = None,
+    path: str | None = None,
+    input_directory: str | None = None,
+    output_directory: str | None = None,
+) -> dict[str, str]:
+    """一站式合同检查：线性化后核验合同主体真实性和可信风险。"""
+    final_input_path = _first_present(input_path, file_path, path, input_directory)
+    if not final_input_path:
+        return {"ok": False, "output": "missing required argument: input_path"}
+
+    final_output_dir = _first_present(output_dir, output_directory)
+    if not final_output_dir:
+        final_output_dir = str(_default_linearized_output_dir(final_input_path))
+
+    linearized_result = linearize_documents(
+        file_path=final_input_path,
+        output_dir=final_output_dir,
+        attachments_path=attachments_path,
+        invoice_path=invoice_path,
+    )
+    output_paths = linearized_result.output_paths
+    contract_text = str(linearized_result.linearized_document.get("contract_text", ""))
+    validity_result = _tool_review_contract_validity(
+        linearized_path=output_paths.get("contract"),
+        contract_text=contract_text,
+        search_enabled=search_enabled,
+    )
+
+    payload = {
+        "input_path": final_input_path,
+        "output_dir": str(Path(final_output_dir).resolve()),
+        "contract_pages": len(linearized_result.ocr_payload["contract"]),
+        "attachment_pages": len(linearized_result.ocr_payload["attachments"]),
+        "invoice_pages": len(linearized_result.ocr_payload["invoice"]),
+        "output_paths": output_paths,
+        "validity_check": json.loads(validity_result["output"]) if validity_result.get("ok") else validity_result,
     }
     return {"ok": True, "output": json.dumps(payload, ensure_ascii=False, indent=2)}
 
@@ -535,8 +654,11 @@ def _tool_review_contract_validity(
     search_enabled: bool = True,
     path: str | None = None,
     file_path: str | None = None,
+    input_path: str | None = None,
+    text_path: str | None = None,
+    linearized_file: str | None = None,
 ) -> dict[str, str]:
-    final_path = _first_present(linearized_path, path, file_path)
+    final_path = _first_present(linearized_path, path, file_path, input_path, text_path, linearized_file)
     loaded_path = ""
     if not contract_text:
         if final_path:
@@ -623,6 +745,41 @@ def _tool_readfile(
     return {"ok": True, "output": json.dumps(result, ensure_ascii=False, indent=2)}
 
 
+def _tool_readimage(
+    path: str | None = None,
+    max_bytes: int = 6_000_000,
+    include_data_url: bool = True,
+    file_path: str | None = None,
+    input_path: str | None = None,
+    image_path: str | None = None,
+) -> dict[str, str]:
+    final_path = _first_present(path, file_path, input_path, image_path)
+    if not final_path:
+        return {"ok": False, "output": "missing required argument: path"}
+    result = sys_readimage(
+        path=final_path,
+        max_bytes=max_bytes,
+        include_data_url=include_data_url,
+    )
+    image_url = str(result.get("data_url") or "")
+    summary = {
+        "path": result.get("path", ""),
+        "name": result.get("name", ""),
+        "mime_type": result.get("mime_type", ""),
+        "size": result.get("size", 0),
+        "image_url_attached": bool(image_url),
+        "note": "Image bytes are attached to the next model call as image_url, not printed inline.",
+    }
+    return {
+        "ok": True,
+        "output": json.dumps(summary, ensure_ascii=False, indent=2),
+        "image_url": image_url,
+        "image_name": result.get("name", ""),
+        "image_path": result.get("path", ""),
+        "image_mime_type": result.get("mime_type", ""),
+    }
+
+
 def _tool_writefile(
     path: str | None = None,
     content: str = "",
@@ -662,10 +819,12 @@ def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
         "pdf2pngs": _tool_pdf2pngs,
         "parse_documents": _tool_parse_documents,
         "linearize_documents": _tool_linearize_documents,
+        "check_contract": _tool_check_contract,
         "tavliy_search": _tool_tavliy_search,
         "review_contract_validity": _tool_review_contract_validity,
         "ls": _tool_ls,
         "readfile": _tool_readfile,
+        "readimage": _tool_readimage,
         "writefile": _tool_writefile,
     }
     return AgentRunner(config=runtime_config, tools=tools)
