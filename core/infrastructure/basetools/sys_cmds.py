@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import mimetypes
 from pathlib import Path
 from typing import Any
 
@@ -88,6 +90,42 @@ def readfile(
         "size": target.stat().st_size,
         "truncated": truncated,
         "max_chars": max_chars,
+    }
+
+
+def readimage(
+    path: str | Path,
+    max_bytes: int = 6_000_000,
+    include_data_url: bool = True,
+) -> dict[str, Any]:
+    """Read an image file and return base64-encoded image data."""
+    target = _resolve_path(path)
+    if not target.exists():
+        raise FileNotFoundError(f"image file does not exist: {target}")
+    if not target.is_file():
+        raise IsADirectoryError(f"path is not a file: {target}")
+
+    suffix = target.suffix.lower()
+    supported_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+    if suffix not in supported_suffixes:
+        raise ValueError(f"unsupported image suffix: {suffix}")
+
+    size = target.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"image file is too large: {size} bytes > max_bytes={max_bytes}")
+
+    image_bytes = target.read_bytes()
+    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+    mime_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    data_url = f"data:{mime_type};base64,{image_base64}" if include_data_url else ""
+
+    return {
+        "path": str(target),
+        "name": target.name,
+        "mime_type": mime_type,
+        "size": size,
+        "base64": image_base64,
+        "data_url": data_url,
     }
 
 
