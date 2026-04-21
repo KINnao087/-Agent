@@ -38,6 +38,7 @@ class ApiProvider(BaseChatProvider):
             "model": model,
             "messages": messages,
             "temperature": self._temperature,
+            "response_format": {"type": "json_object"},
         }
         if tool_defs:
             request_kwargs["tools"] = tool_defs

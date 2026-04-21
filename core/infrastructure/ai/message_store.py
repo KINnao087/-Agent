@@ -3,6 +3,39 @@ from __future__ import annotations
 from .token_counter import count_message_tokens
 
 
+def _has_user_message(messages: list[dict]) -> bool:
+    return any(message.get("role") == "user" for message in messages)
+
+
+def _latest_user_message(messages: list[dict]) -> dict | None:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return message
+    return None
+
+
+def _restore_latest_user_if_missing(window: list[dict], source_messages: list[dict], model: str) -> tuple[list[dict], int]:
+    """Keep at least one user message for providers that reject user-less requests."""
+    if _has_user_message(window):
+        total = sum(count_message_tokens(message, model) for message in window)
+        return window, total
+
+    latest_user = _latest_user_message(source_messages)
+    if latest_user is None:
+        total = sum(count_message_tokens(message, model) for message in window)
+        return window, total
+
+    selected_ids = {id(message) for message in window}
+    selected_ids.add(id(latest_user))
+    restored = [
+        message
+        for message in source_messages
+        if id(message) in selected_ids
+    ]
+    total = sum(count_message_tokens(message, model) for message in restored)
+    return restored, total
+
+
 def calc_total_tokens(messages: list[dict], model: str) -> int:
     """统计会话中所有非 system 消息的 token 总数。"""
     return sum(
@@ -70,6 +103,7 @@ def trim_messages(
             if message.get("role") != "system"
         )
 
+    window, total = _restore_latest_user_if_missing(window, other_messages, model)
     trimmed = system_messages + window
     return (trimmed, total) if return_total else trimmed
 
