@@ -46,6 +46,17 @@ def _preview_text(value: object, limit: int = 300) -> str:
     return text if len(text) <= limit else text[:limit] + "...(truncated)"
 
 
+def _tool_result_content(result: dict[str, Any]) -> str:
+    """把工具结果包装成显式状态，避免模型把失败输出误读成成功。"""
+    return json.dumps(
+        {
+            "ok": bool(result.get("ok")),
+            "output": str(result.get("output", "")),
+        },
+        ensure_ascii=False,
+    )
+
+
 def _content_to_text(content: Any) -> str:
     """Extract text from string or multimodal message content without dumping image data."""
     if isinstance(content, str):
@@ -224,7 +235,7 @@ def handle_tool_call(
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "name": name,
-                    "content": result["output"],
+                    "content": _tool_result_content(result),
                 },
                 total_tokens,
                 keep_last=keep_last,
@@ -242,7 +253,7 @@ def handle_tool_call(
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "name": name,
-                "content": result["output"],
+                "content": _tool_result_content(result),
             },
             total_tokens,
             keep_last=keep_last,
@@ -280,7 +291,7 @@ def handle_tool_call(
             "role": "tool",
             "tool_call_id": tool_call.id,
             "name": name,
-            "content": result.get("output", ""),
+            "content": _tool_result_content(result),
         },
         total_tokens,
         keep_last=keep_last,
