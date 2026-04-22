@@ -14,6 +14,7 @@ from core.infrastructure.basetools.sys_cmds import readfile as sys_readfile
 from core.infrastructure.basetools.sys_cmds import readimage as sys_readimage
 from core.infrastructure.basetools.sys_cmds import writefile as sys_writefile
 from core.infrastructure.contracts.basic_info_extractor import extract_contract_basic_info
+from core.infrastructure.RAG import format_chunks, get_and_rerank_chunks
 from core.infrastructure.text import pdf2png
 from core.infrastructure.web_searcher.searcher import tavliy_search
 
@@ -52,6 +53,8 @@ CLI_SHELL_SYSTEM_PROMPT = """
 
 约束：
 - 不要编造文件路径、文件内容、工具结果或输出路径。
+- 如果工具返回 ok=false，或工具输出包含 TypeError、ValueError、Traceback、failed、error，
+  必须明确说明工具调用失败和失败原因，不要说“工具调用成功”。
 - 不要声称自己不能读取图片；对于 PNG、PDF 或图片目录，调用 check_contract 或 linearize_documents，
   工具会通过 OCR 读取图片内容。
 - 用户要求“检查合同图片/PDF/目录，并判断双方公司信息是否真实、是否可信”时，
@@ -837,9 +840,23 @@ class CliChatService:
 
     def ask(self, message: str, max_steps: int = 20) -> str:
         """执行一轮 shell 对话，并返回最终展示给用户的文本。"""
-        logger.info("CLI shell received message: {}", message)
+        logger.info("[chat_services Cli]CLI shell received message: {}", message)
+
+        # 检索task相关的材料，并拼接到用户task中
+        task = message
+        try:
+            chunks = get_and_rerank_chunks(message)
+        except Exception as exc:
+            logger.warning("RAG 检索失败，使用原始用户任务: {}", exc)
+        else:
+            formatted_chunks = format_chunks(chunks)
+            if formatted_chunks:
+                task = f"{message}\n\n相关资料：\n{formatted_chunks}"
+
+        logger.info("[chat_services Cli]CLI shell task: {}", task)
+
         reply, self.session = self.runner.run_and_get_reply(
-            task=message,
+            task=task,
             session=self.session,
             max_steps=max_steps,
             enable_thinking_stream=False,
