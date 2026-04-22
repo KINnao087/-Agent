@@ -19,6 +19,7 @@ from .providers import BaseChatProvider
 class ConversationSession:
     messages: list[dict]
     total_tokens: int
+    last_reply: str = ""
 
     @classmethod
     def from_messages(cls, messages: list[dict], model: str) -> "ConversationSession":
@@ -45,6 +46,14 @@ def get_last_assistant_text(messages: list[dict]) -> str:
             structured_text = extract_user_visible_message(content)
             return structured_text if structured_text is not None else content.strip()
     return ""
+
+
+def preview_text(value: Any, limit: int = 1200) -> str:
+    """生成适合写入日志的短文本预览。"""
+    text = sanitize_text(value).replace("\r\n", "\n")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...(truncated, {len(text)} chars total)"
 
 
 def get_system_info() -> str:
@@ -146,10 +155,11 @@ class AgentRunner:
         )
 
         elapsed = time.perf_counter() - start
+        last_reply = get_last_assistant_text(messages) or content
         logger.info("Task completed in {:.3f}s after {} step(s)", elapsed, step)
-        logger.info("Assistant final preview: {}", get_last_assistant_text(messages) or content)
+        logger.info("Assistant final preview: {}", preview_text(last_reply))
 
-        return ConversationSession(messages=messages, total_tokens=total_tokens)
+        return ConversationSession(messages=messages, total_tokens=total_tokens, last_reply=last_reply)
 
     def run_and_get_reply(
         self,
@@ -166,4 +176,4 @@ class AgentRunner:
             enable_thinking_stream=enable_thinking_stream,
             echo_output=False,
         )
-        return get_last_assistant_text(session.messages), session
+        return session.last_reply or get_last_assistant_text(session.messages), session
