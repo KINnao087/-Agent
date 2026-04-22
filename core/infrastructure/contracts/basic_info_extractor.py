@@ -5,6 +5,7 @@ import json
 from core.domain.contracts.models import ContractBasicInfo
 from core.infrastructure.ai import parse_json_object, run_message_and_get_reply
 from core.infrastructure.ai.logger import get_logger
+from core.infrastructure.ai.session import preview_text
 
 logger = get_logger("contract-extractor")
 
@@ -108,6 +109,6 @@ def extract_contract_basic_info(contract_text: str) -> ContractBasicInfo:
         user_message=user_message,
         work_description=BASIC_INFO_EXTRACTION_SYSTEM_PROMPT,
     )
-    logger.info("AI 原始返回：\n{}", reply_text)
+    logger.info("AI 原始返回预览：\n{}", preview_text(reply_text))
     data = parse_json_object(reply_text)
     return _build_contract_basic_info(data)
