@@ -1,6 +1,6 @@
 {
   "provider": "api",
-  "model": "qwen-vl-plus",
+  "model": "qwen3.5-flash",
   "keep_last": 4000,
   "tool_defs": [],
   "api": {
