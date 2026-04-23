@@ -55,6 +55,8 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - 不要编造文件路径、文件内容、工具结果或输出路径。
 - 如果工具返回 ok=false，或工具输出包含 TypeError、ValueError、Traceback、failed、error，
   必须明确说明工具调用失败和失败原因，不要说“工具调用成功”。
+- 如果工具错误是 JSONDecodeError，通常表示内部 AI 返回的 JSON 解析失败；
+  除非用户明确传入的是 JSON 文件，否则不要说用户文件内容不是有效 JSON。
 - 不要声称自己不能读取图片；对于 PNG、PDF 或图片目录，调用 check_contract 或 linearize_documents，
   工具会通过 OCR 读取图片内容。
 - 用户要求“检查合同图片/PDF/目录，并判断双方公司信息是否真实、是否可信”时，

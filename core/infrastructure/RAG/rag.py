@@ -92,7 +92,12 @@ def rerank(query: str, retrieve_chunks: List[str], top_k: int) -> List[str]:
     scored_chunks = list(zip(retrieve_chunks, scores))
     scored_chunks.sort(key=lambda x: x[1], reverse=True)
 
-    return [chunk for chunk, _ in scored_chunks[:top_k]]
+    filtered_chunks = [chunk for chunk, score in scored_chunks if score >= -3.0]
+    # for chunk, score in scored_chunks[:top_k]:
+    #     print(f"[{chunk}] :: {score}")
+
+    # 返回前判断资料和问题的联系程度
+    return filtered_chunks[:top_k]
 
 def get_and_rerank_chunks(query: str, get_top_k: int = VECTOR_COUNTS, rank_top_k: int = SEARCH_RANKS) -> List[str]:
     retrieve_chunks = retrieve(query, get_top_k)
@@ -113,7 +118,7 @@ def main():
     # embeddings = [embed_chunk(chunk) for chunk in chunks]
     # save_embeddings(chunks, embeddings)
 
-    query = "帮我检验这个合同"
+    query = "帮我检查这个合同"
     retrieved_chunks = retrieve(query, top_k=30)
     # for i, chunk in enumerate(retrieved_chunks):
     #     print(f"[{i}] {chunk}\n")
