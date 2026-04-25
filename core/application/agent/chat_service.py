@@ -33,7 +33,7 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - pdf2pngs：将单个 PDF 文件转换为 PNG 图片列表。
 - parse_documents：把合同、附件、发票解析成结构化 JSON。
 - linearize_documents：把合同、附件、发票线性化成文本文件。
-- check_contract：对 PDF、PNG 或图片目录执行完整合同检查：OCR 线性化、抽取主体、搜索核验、判断双方公司信息真实性和可信风险。
+- check_contract：对 PDF、PNG 或图片目录执行当前版本的一站式合同初审：OCR 线性化、抽取合同主体、搜索公开信息，并输出双方公司信息真实性和可信风险判断。它当前不包含合同完整性审核、签章审核、平台字段逐项比对，不要把它表述成“全量终审”或“所有审核项都已完成”。
 - tavliy_search：根据查询词执行网页搜索，并返回搜索结果字典。
 - review_contract_validity：读取线性化合同文本，搜索合同主体公开信息，并给出合同有效性风险判断。
 - ls：列出本机目录下的文件和子目录。
@@ -74,6 +74,7 @@ CLI_SHELL_SYSTEM_PROMPT = """
   优先调用 check_contract / linearize_documents，而不是直接 readimage。
 - 用户只是咨询设计、实现思路或用法时，直接返回 to_user JSON，不必调用工具。
 - 回答默认使用中文，保持简洁。
+- 如果你调用了 check_contract，只能把结果表述为“合同初审”或“主体真实性/可信风险初审”。除非用户另外要求且系统另有对应工具，否则不要声称已经完成完整性审核、签章审核、骑缝章审核、替换页审核或平台字段逐项核对。
 """.strip()
 
 
@@ -162,7 +163,7 @@ def _build_tool_defs() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "check_contract",
-                "description": "对 PDF、PNG 或图片目录执行完整合同检查：OCR 线性化、抽取合同主体、搜索主体公开信息、失信和经营异常，并判断双方公司信息真实性和可信风险。",
+                "description": "对 PDF、PNG 或图片目录执行当前版本的一站式合同初审：OCR 线性化、抽取合同主体、搜索主体公开信息、失信和经营异常，并判断双方公司信息真实性和可信风险。当前不包含合同完整性审核、签章审核、骑缝章审核或平台字段逐项比对；不要把它理解为全量终审。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -603,7 +604,7 @@ def _tool_check_contract(
     input_directory: str | None = None,
     output_directory: str | None = None,
 ) -> dict[str, str]:
-    """一站式合同检查：线性化后核验合同主体真实性和可信风险。"""
+    """一站式合同初审：线性化后核验合同主体真实性和可信风险。"""
     final_input_path = _first_present(input_path, file_path, path, input_directory)
     if not final_input_path:
         return {"ok": False, "output": "missing required argument: input_path"}
@@ -632,6 +633,21 @@ def _tool_check_contract(
         "contract_pages": len(linearized_result.ocr_payload["contract"]),
         "attachment_pages": len(linearized_result.ocr_payload["attachments"]),
         "invoice_pages": len(linearized_result.ocr_payload["invoice"]),
+        "scope": {
+            "covered": [
+                "ocr_linearization",
+                "contract_party_extraction",
+                "public_info_search",
+                "validity_risk_precheck",
+            ],
+            "not_covered": [
+                "contract_integrity_review",
+                "seal_review",
+                "cross_page_seal_review",
+                "platform_basic_info_compare",
+            ],
+            "note": "check_contract 当前是合同初审工具，不代表所有审核项已经完成。",
+        },
         "output_paths": output_paths,
         "validity_check": json.loads(validity_result["output"]) if validity_result.get("ok") else validity_result,
     }
