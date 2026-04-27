@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, List
 
+from core.application.contracts import check_contract_seals_service
 from core.application.documents import linearize_documents, parse_documents_to_structured_json
 from core.infrastructure.RAG import format_chunks, get_and_rerank_chunks
 from core.infrastructure.ai import AgentRunner, ConversationSession, load_agent_config
@@ -34,6 +35,7 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - parse_documents：把合同、附件、发票解析成结构化 JSON。
 - linearize_documents：把合同、附件、发票线性化成文本文件。
 - check_contract：对 PDF、PNG 或图片目录执行当前版本的一站式合同初审：OCR 线性化、抽取合同主体、搜索公开信息，并输出双方公司信息真实性和可信风险判断。它当前不包含合同完整性审核、签章审核、平台字段逐项比对，不要把它表述成“全量终审”或“所有审核项都已完成”。
+- check_contract_seals：对合同图片文件夹执行红色签章审核，返回签章检测和审核结果。它当前只覆盖红色签章，不包含骑缝章、签名、电子章等其他要素。
 - tavliy_search：根据查询词执行网页搜索，并返回搜索结果字典。
 - review_contract_validity：读取线性化合同文本，搜索合同主体公开信息，并给出合同有效性风险判断。
 - ls：列出本机目录下的文件和子目录。
@@ -375,20 +377,16 @@ def _build_tool_defs() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "check_contract_seals",
-                "description": "对一个或多个合同页面执行红色签章审核。工具内部会处理红色签章检测、多模态审核和结果汇总，返回结构化 JSON。当前只审核红色签章，不包含骑缝章、签名、电子章等其他要素。",
+                "description": "对合同图片文件夹执行红色签章审核。工具内部会遍历目录中的合同页图片，处理红色签章检测、多模态审核和结果汇总，返回结构化 JSON。当前只审核红色签章，不包含骑缝章、签名、电子章等其他要素。",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "contract_paths": {
-                            "type": "array",
-                            "description": "待审核的合同页面图片路径列表。每一项应为单页合同图片路径，支持绝对路径或相对当前工作目录的路径。",
-                            "items": {
-                                "type": "string"
-                            },
-                            "minItems": 1,
+                        "input_path": {
+                            "type": "string",
+                            "description": "待审核的合同图片文件夹路径。目录内应包含按页存放的合同图片，支持绝对路径或相对当前工作目录的路径。",
                         },
                     },
-                    "required": ["contract_paths"],
+                    "required": ["input_path"],
                     "additionalProperties": False,
                 },
             },
@@ -842,12 +840,8 @@ def _tool_writefile(
         create_parents=create_parents,
     )
     return {"ok": True, "output": json.dumps(result, ensure_ascii=False, indent=2)}
-
-
-from core.application.contracts import check_contract_seals_service
-def _tool_check_contract_seals(contract_paths: List[str])-> dict[str, str]:
-    ret = check_contract_seals_service(contract_paths)
-    return ret
+def _tool_check_contract_seals(input_path: str) -> dict[str, str]:
+    return check_contract_seals_service(input_path)
 
 def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
     """在原始模型配置上叠加 shell 专用 prompt 和工具目录。"""
