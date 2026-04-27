@@ -48,9 +48,17 @@ def _build_single_page_seal_check_message(
 1. target_bbox 的格式为 [x, y, width, height]。
 2. 你必须按 candidate_index 逐个返回结果。
 3. 不要把同一页里其他更显眼的印章当成当前候选框的结果。
-4. 只返回单个 JSON 对象，不要输出解释文字、代码块或 Markdown。
-5. 如果某个候选框区域没有明确有效签章，请返回 present=false 或 null。
-6. 如果无法可靠判断，请返回 unknown 或 null，不要臆造。
+4. owner 只能返回 seller、buyer 或 unknown。
+5. owner 映射规则必须严格遵守：
+   - buyer = 甲方 / 委托方 / 买方
+   - seller = 乙方 / 受托方 / 卖方
+6. 如果你判断某个候选框是甲方公章，则 owner 必须返回 buyer。
+7. 如果你判断某个候选框是乙方公章，则 owner 必须返回 seller。
+8. reason、owner、visible_company_name 三者必须保持一致，不能出现 owner=buyer 但 reason 写成“乙方公章”这类冲突。
+9. visible_company_name 必须填写你从印章文字中直接识别出的公司名称；如果无法可靠识别则返回空字符串。
+10. 如果某个候选框区域没有明确有效签章，请返回 present=false 或 null，并在 status 中优先返回 missing 或 unknown。
+11. 如果无法可靠判断，请返回 unknown 或 null，不要臆造。
+12. 只返回单个 JSON 对象，不要输出解释文字、代码块或 Markdown。
 
 返回结构必须严格如下：
 {{
@@ -66,6 +74,12 @@ def _build_single_page_seal_check_message(
     }}
   ]
 }}
+
+补充要求：
+1. 如果同一页出现两个主签章，通常分别对应甲方和乙方；不要随意把两个章都标成 buyer 或都标成 seller。
+2. 如果候选框里是清晰完整的红色公章，status 优先返回 intact。
+3. 如果章存在但模糊、残缺、被遮挡，可返回 damaged 或 unclear。
+4. 如果 present=true，但无法判断归属，则 owner 返回 unknown。
 """.strip()
 
 
