@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from core.application.documents import linearize_documents, parse_documents_to_structured_json
+from core.infrastructure.RAG import format_chunks, get_and_rerank_chunks
 from core.infrastructure.ai import AgentRunner, ConversationSession, load_agent_config
 from core.infrastructure.ai import parse_json_object, run_message_and_get_reply
 from core.infrastructure.ai.logger import get_logger
@@ -14,7 +15,6 @@ from core.infrastructure.basetools.sys_cmds import readfile as sys_readfile
 from core.infrastructure.basetools.sys_cmds import readimage as sys_readimage
 from core.infrastructure.basetools.sys_cmds import writefile as sys_writefile
 from core.infrastructure.contracts.basic_info_extractor import extract_contract_basic_info
-from core.infrastructure.RAG import format_chunks, get_and_rerank_chunks
 from core.infrastructure.text import pdf2png
 from core.infrastructure.web_searcher.searcher import tavliy_search
 
@@ -367,6 +367,28 @@ def _build_tool_defs() -> list[dict[str, Any]]:
                         },
                     },
                     "required": ["path", "content"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_contract_seals",
+                "description": "对一个或多个合同页面执行红色签章审核。工具内部会处理红色签章检测、多模态审核和结果汇总，返回结构化 JSON。当前只审核红色签章，不包含骑缝章、签名、电子章等其他要素。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "contract_paths": {
+                            "type": "array",
+                            "description": "待审核的合同页面图片路径列表。每一项应为单页合同图片路径，支持绝对路径或相对当前工作目录的路径。",
+                            "items": {
+                                "type": "string"
+                            },
+                            "minItems": 1,
+                        },
+                    },
+                    "required": ["contract_paths"],
                     "additionalProperties": False,
                 },
             },
@@ -822,6 +844,11 @@ def _tool_writefile(
     return {"ok": True, "output": json.dumps(result, ensure_ascii=False, indent=2)}
 
 
+from core.application.contracts import check_contract_seals_service
+def _tool_check_contract_seals(contract_paths: List[str])-> dict[str, str]:
+    ret = check_contract_seals_service(contract_paths)
+    return ret
+
 def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
     """在原始模型配置上叠加 shell 专用 prompt 和工具目录。"""
     config = load_agent_config(config_path)
@@ -847,6 +874,7 @@ def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
         "readfile": _tool_readfile,
         "readimage": _tool_readimage,
         "writefile": _tool_writefile,
+        "check_contract_seals": _tool_check_contract_seals,
     }
     return AgentRunner(config=runtime_config, tools=tools)
 
