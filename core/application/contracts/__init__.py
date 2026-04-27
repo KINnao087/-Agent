@@ -6,6 +6,7 @@ from .integrity_service import (
     check_contract_all,
     check_contract_integrity,
 )
+from .seals_services import check_contract_seals_service
 
 __all__ = [
     "build_contract_page_texts",
@@ -13,4 +14,5 @@ __all__ = [
     "check_basic_info_service",
     "check_contract_all",
     "check_contract_integrity",
+    "check_contract_seals_service"
 ]
