@@ -8,7 +8,14 @@ from .integrity_models import (
     ContractSealIntegrityResult,
 )
 from .models import CheckBasicInfoRequest, CheckBasicInfoResponse, ContractBasicInfo
-
+from .cross_page_seal_models import (
+    CPSealEdge,
+    CPSealFragment,
+    CPSealPageResult,
+    CPSealResult,
+    CPSealRiskLevel,
+    CPSealStatus,
+)
 __all__ = [
     "CheckBasicInfoRequest",
     "CheckBasicInfoResponse",
@@ -19,4 +26,11 @@ __all__ = [
     "ContractSealIntegrityResult",
     "build_summary",
     "compare_basic_info",
+
+    "CPSealEdge",
+    "CPSealFragment",
+    "CPSealPageResult",
+    "CPSealResult",
+    "CPSealRiskLevel",
+    "CPSealStatus",
 ]
