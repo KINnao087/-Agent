@@ -1,5 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Literal
+
+from core.infrastructure.vision.seal import SealBBox
+
 #CPSeal = CrossPageSeal
 CPSealStatus = Literal[
     "present",      # 正常
@@ -24,7 +27,7 @@ CPSealRiskLevel = Literal[
     "unknown",
 ]
 
-SealBBox = list[int]
+# SealBBox = list[int]
 
 @dataclass(slots=True)
 class CPSealFragment:
