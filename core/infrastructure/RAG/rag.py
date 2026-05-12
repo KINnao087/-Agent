@@ -1,4 +1,27 @@
 from typing import List
+import os
+import threading
+
+_model_lock = threading.RLock()
+_embeddings_model = None
+_cross_encoder = None
+
+
+def _get_embedding_model():
+    global _embedding_model
+
+    if _embedding_model is None:
+        with _model_lock:
+            if _embedding_model is None:
+                from sentence_transformers import SentenceTransformer
+
+                model_path = os.getenv(
+                    "RAG_EMBEDDING_MODEL",
+                    "data/models/text2vec-base-chinese",
+                )
+                _embedding_model = SentenceTransformer(model_path)
+
+    return _embedding_model
 
 VECTOR_COUNTS = 5
 SEARCH_RANKS = 5
@@ -11,12 +34,13 @@ def split2chunks(file: str) -> List[str]:
     return [c for c in contents.split("\n\n")]
 
 
-from sentence_transformers import SentenceTransformer
-embedding_model = SentenceTransformer("shibing624/text2vec-base-chinese")
+# from sentence_transformers import SentenceTransformer
+# embedding_model = SentenceTransformer("shibing624/text2vec-base-chinese")
 
 def embed_chunk(chunk: str) -> List[float]:
     """把文本转换成浮点向量"""
-    embeddings = embedding_model.encode(chunk, normalize_embeddings=True)
+    model = _get_embedding_model()
+    embeddings = model.encode(chunk, normalize_embeddings=True)
     return embeddings.tolist()
 
 
@@ -73,15 +97,20 @@ def retrieve(query: str, top_k: int) -> List[str]:
     # print(res)
     return res["documents"][0]
 
-from sentence_transformers import CrossEncoder
-_cross_encoder = None
-
-
 def _get_cross_encoder():
     """惰性加载 rerank 模型，避免每次检索重复初始化。"""
     global _cross_encoder
     if _cross_encoder is None:
-        _cross_encoder = CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1')
+        with _model_lock:
+            if _cross_encoder is None:
+                from sentence_transformers import CrossEncoder
+
+                model_path = os.getenv(
+                    "RAG_RERANK_MODEL",
+                    "data/models/mmarco-mMiniLMv2-L12-H384-v1",
+                )
+                _cross_encoder = CrossEncoder(model_path)
+
     return _cross_encoder
 
 def rerank(query: str, retrieve_chunks: List[str], top_k: int) -> List[str]:
