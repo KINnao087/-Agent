@@ -40,5 +40,5 @@ def check_cpseal_services(input_dir: Path) -> CPSealResult:
         ))
 
     res = analyze_cross_page_seal_results(fragments)
-    res.page_count = len(fragments)
+    res.page_count = len(image_paths)
     return res
