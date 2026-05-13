@@ -9,6 +9,9 @@ from core.infrastructure.vision.seal.preprocessing import load_image, build_red_
 
 logger = get_logger("cross-page-seal-detector")
 
+CPSEAL_MIN_CONTOUR_AREA = 10
+CPSEAL_MAX_CONTOURS_PER_PAGE = 120
+
 
 def _check_edge(box: SealBBox, imagew: int, imageh: int) -> CPSealEdge:
     """判断候选框靠近页面哪一条边。"""
@@ -99,7 +102,11 @@ def detect_cross_page_seal_fragments(
     red_mask = build_red_mask(image)
     clean_mask = clean_red_mask(red_mask)
 
-    contours = find_red_contours(clean_mask)
+    contours = find_red_contours(
+        clean_mask,
+        min_contour_area=CPSEAL_MIN_CONTOUR_AREA,
+        max_contours=CPSEAL_MAX_CONTOURS_PER_PAGE,
+    )
     boxes = [build_candidate_bbox(c) for c in contours]
     logger.info("红色候选轮廓数量 page_index={}, count={}", page_index, len(boxes))
 
@@ -148,14 +155,13 @@ def analyze_cross_page_seal_results(
        - score 必须大于 0。
     3. 从有效候选中统计出现最多的边，作为 main_edge。
        骑缝章通常应连续出现在同一侧边缘，所以只把 main_edge 上的页面计入 detected_pages。
-    4. missing_pages 按 1..page_count 计算：
-       只要某页没有在 main_edge 上检测到有效候选，就视为该页缺少连续骑缝章候选。
+    4. 本函数不再按 1..page_count 计算缺失页。
+       因为合同可能是正反面交替扫描，骑缝章只出现在正面；总页数不能直接作为完整性判断标准。
     5. 状态判定规则：
        - 没有任何输入片段：status="unknown"，risk_level="unknown"；
        - 有输入但没有有效候选：status="missing"，risk_level="high"；
-       - 所有页都在 main_edge 上有有效候选：status="present"，risk_level="low"；
-       - 部分页缺少候选：status="incomplete"，
-         缺失页较多时 risk_level="high"，否则为 "medium"。
+       - 有有效候选：status="unclear"，risk_level="unknown"。
+         规则层只说明“有疑似骑缝章片段”，最终完整性由多模态复审判断这些片段能否拼成完整章。
     6. 返回的 CPSealResult 是规则初审结果，不是最终大模型复审结论。
        后续 VLM 复审可以基于本结果、原图和候选裁剪图进一步修正 status/risk/reason。
     """
@@ -197,11 +203,7 @@ def analyze_cross_page_seal_results(
         main_edge = "unknown"
         detected_pages = []
 
-    missing_pages = [
-        page_index
-        for page_index in range(1, page_count + 1)
-        if page_index not in set(detected_pages)
-    ]
+    missing_pages: list[int] = []
 
     page_result_items = [
         CPSealPageResult(
@@ -220,16 +222,12 @@ def analyze_cross_page_seal_results(
         status = "missing"
         risk_level = "high"
         reason = "未检测到靠近页面边缘的骑缝章候选片段。"
-    elif not missing_pages:
-        status = "present"
-        risk_level = "low"
-        reason = f"第1至{page_count}页均在{main_edge}侧检测到骑缝章候选片段。"
     else:
-        status = "incomplete"
-        risk_level = "high" if len(missing_pages) >= max(2, page_count // 2) else "medium"
+        status = "unclear"
+        risk_level = "unknown"
         reason = (
             f"主要在{main_edge}侧检测到骑缝章候选片段，"
-            f"但第{','.join(str(page) for page in missing_pages)}页未检测到连续候选。"
+            "规则层不按总页数判断缺失；需由多模态复审判断片段整体能否拼成完整骑缝章。"
         )
 
     logger.info(
