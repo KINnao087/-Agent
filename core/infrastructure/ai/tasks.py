@@ -309,6 +309,47 @@ def run_image_and_get_reply(
     return result.content
 
 
+def run_images_and_get_reply(
+    image_paths: list[str | Path],
+    user_message: str,
+    work_description: str = "",
+    config_path: str | Path | None = None,
+) -> str:
+    """发送多张本地图片和一段文本给多模态模型，并返回回复文本。"""
+    if not image_paths:
+        raise ValueError("image_paths must not be empty")
+
+    config = load_agent_config(config_path)
+    provider = build_provider(config)
+    runtime_system = _merge_system_prompts(config.base_system, work_description)
+
+    content: list[dict] = [{"type": "text", "text": user_message}]
+    resolved_paths = [Path(image_path) for image_path in image_paths]
+    for image_path in resolved_paths:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": _img2b64_dataurl(image_path)},
+            }
+        )
+
+    messages = [
+        {"role": "system", "content": runtime_system},
+        {"role": "user", "content": content},
+    ]
+
+    logger.info("AI system prompt:\n{}", runtime_system)
+    logger.info("AI user message:\n{}", user_message)
+    logger.info("AI image paths: {}", [str(path) for path in resolved_paths])
+
+    result = provider.chat(
+        model=config.model,
+        tool_defs=[],
+        messages=messages,
+    )
+    return result.content
+
+
 def _build_ocr2json_user_message(ocr_payload: dict) -> str:
     """根据 OCR 输入对象和内置模板构造发给模型的用户消息。"""
     file_name = Path(str(ocr_payload.get("input_path", ""))).name
