@@ -137,7 +137,27 @@ def analyze_cross_page_seal_results(
     page_results: list[CPSealFragment]
 ) -> CPSealResult:
     """
-        处理所有CPSealFragment并汇总成result
+    汇总所有页面的骑缝章候选片段，生成规则初审结果。
+
+    行为说明：
+    1. 输入是 detect_cross_page_seal_fragments 返回的 CPSealFragment 列表，
+       这里不再重新识别图片，只基于候选片段做汇总判断。
+    2. 先按 page_index 分组，并过滤出有效候选：
+       - page_index 必须大于 0；
+       - edge 不能是 "unknown"；
+       - score 必须大于 0。
+    3. 从有效候选中统计出现最多的边，作为 main_edge。
+       骑缝章通常应连续出现在同一侧边缘，所以只把 main_edge 上的页面计入 detected_pages。
+    4. missing_pages 按 1..page_count 计算：
+       只要某页没有在 main_edge 上检测到有效候选，就视为该页缺少连续骑缝章候选。
+    5. 状态判定规则：
+       - 没有任何输入片段：status="unknown"，risk_level="unknown"；
+       - 有输入但没有有效候选：status="missing"，risk_level="high"；
+       - 所有页都在 main_edge 上有有效候选：status="present"，risk_level="low"；
+       - 部分页缺少候选：status="incomplete"，
+         缺失页较多时 risk_level="high"，否则为 "medium"。
+    6. 返回的 CPSealResult 是规则初审结果，不是最终大模型复审结论。
+       后续 VLM 复审可以基于本结果、原图和候选裁剪图进一步修正 status/risk/reason。
     """
     fragments = list(page_results or [])
     if not fragments:

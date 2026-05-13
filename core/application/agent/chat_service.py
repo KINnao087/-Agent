@@ -397,7 +397,7 @@ def _build_tool_defs() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "check_cpseal",
-                "description": "对合同 PDF、单张图片或图片目录执行骑缝章审核。工具会先进行本地视觉候选检测和规则初审，并在需要时接入多模态大模型复审；当前返回结构化审核结果和风险说明。",
+                "description": "对合同 PDF、单张图片或图片目录执行骑缝章审核。工具会先进行本地视觉候选检测和规则初审，会接入多模态大模型复审；当前返回结构化审核结果和风险说明。",
                 "parameters": {
                     "type": "object",
                     "properties": {
