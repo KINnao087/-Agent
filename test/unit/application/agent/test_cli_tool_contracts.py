@@ -9,6 +9,7 @@ from core.application.agent.chat_service import (
     _build_tool_defs,
     _tool_check_contract,
     _tool_check_contract_seals,
+    _tool_check_cpseal,
     _tool_linearize_documents,
     _tool_ls,
     _tool_parse_documents,
@@ -22,6 +23,7 @@ from core.application.agent.chat_service import (
 from core.infrastructure.ai.agent_loop import _handle_tool_calls, handle_tool_call
 from core.infrastructure.ai.message_store import trim_messages
 from core.infrastructure.ai.providers import ToolCall, ToolFunction
+from core.domain.contracts import CPSealResult
 
 
 TOOL_FUNCTIONS = {
@@ -30,6 +32,7 @@ TOOL_FUNCTIONS = {
     "linearize_documents": _tool_linearize_documents,
     "check_contract": _tool_check_contract,
     "check_contract_seals": _tool_check_contract_seals,
+    "check_cpseal": _tool_check_cpseal,
     "tavliy_search": _tool_tavliy_search,
     "review_contract_validity": _tool_review_contract_validity,
     "ls": _tool_ls,
@@ -100,6 +103,31 @@ def test_readimage_adapter_attaches_image_url_without_inline_payload() -> None:
     assert payload["image_url_attached"] is True
     assert "data:image/png;base64,AAAA" not in result["output"]
     assert '"base64"' not in result["output"]
+
+
+def test_check_cpseal_adapter_returns_json_payload() -> None:
+    fake_result = CPSealResult(
+        status="present",
+        page_count=2,
+        detected_pages=[1, 2],
+        missing_pages=[],
+        main_edge="right",
+        risk_level="low",
+        reason="检测到连续骑缝章片段",
+    )
+
+    with patch(
+        "core.application.agent.chat_service.check_cpseal_services",
+        return_value=fake_result,
+    ) as check_cpseal:
+        result = _tool_check_cpseal(input_path="D:/contracts/pages")
+
+    assert result["ok"] is True
+    check_cpseal.assert_called_once()
+    payload = json.loads(result["output"])
+    assert payload["status"] == "present"
+    assert payload["page_count"] == 2
+    assert payload["main_edge"] == "right"
 
 
 def test_image_tool_result_appends_multimodal_image_url_message() -> None:
