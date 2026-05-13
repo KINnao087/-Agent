@@ -27,7 +27,11 @@ MAX_CANDIDATES_PER_PAGE = 10
 MERGE_GAP = 80
 
 
-def find_red_contours(mask: MaskArray) -> list[ContourArray]:
+def find_red_contours(
+    mask: MaskArray,
+    min_contour_area: float = MIN_CONTOUR_AREA,
+    max_contours: int | None = None,
+) -> list[ContourArray]:
     """从清理后的红色二值图中提取候选轮廓。
     输入是单通道 mask，输出是 OpenCV 轮廓列表。
     """
@@ -36,11 +40,13 @@ def find_red_contours(mask: MaskArray) -> list[ContourArray]:
     result: list[ContourArray] = []
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area < MIN_CONTOUR_AREA:
+        if area < min_contour_area:
             continue
         result.append(contour)
 
     result.sort(key=cv2.contourArea, reverse=True)
+    if max_contours is not None:
+        result = result[:max_contours]
     return result
 
 
@@ -127,7 +133,10 @@ def detect_seal_candidates(
     image = load_image(image_path)
     red_mask = build_red_mask(image)
     clean_mask = clean_red_mask(red_mask)
-    contours = find_red_contours(clean_mask)
+    contours = find_red_contours(
+        clean_mask,
+        min_contour_area=MIN_CONTOUR_AREA,
+    )
     candidate_boxes = merge_candidate_bboxes(
         [build_candidate_bbox(contour) for contour in contours]
     )

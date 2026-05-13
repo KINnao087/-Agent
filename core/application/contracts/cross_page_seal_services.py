@@ -4,6 +4,7 @@ from core.domain.contracts import CPSealResult
 from core.infrastructure.text import pdf2png
 from core.infrastructure.vision.seal.cross_page_detector import detect_cross_page_seal_fragments, \
     analyze_cross_page_seal_results
+from core.infrastructure.vision.seal.cross_page_review import review_spseal_results
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 
@@ -41,4 +42,5 @@ def check_cpseal_services(input_dir: Path) -> CPSealResult:
 
     res = analyze_cross_page_seal_results(fragments)
     res.page_count = len(image_paths)
-    return res
+    tres = review_spseal_results(fragments=fragments, pre_result=res)
+    return tres
