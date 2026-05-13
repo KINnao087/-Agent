@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, asdict
 from pathlib import Path
 from typing import Any, List
 
 from core.application.contracts import check_contract_seals_service
+from core.application.contracts.cross_page_seal_services import check_cpseal_services
 from core.application.documents import linearize_documents, parse_documents_to_structured_json
 from core.infrastructure.RAG import format_chunks, get_and_rerank_chunks
 from core.infrastructure.ai import AgentRunner, ConversationSession, load_agent_config
@@ -36,6 +37,7 @@ CLI_SHELL_SYSTEM_PROMPT = """
 - linearize_documents：把合同、附件、发票线性化成文本文件。
 - check_contract：对 PDF、PNG 或图片目录执行当前版本的一站式合同初审：OCR 线性化、抽取合同主体、搜索公开信息，并输出双方公司信息真实性和可信风险判断。它当前不包含合同完整性审核、签章审核、平台字段逐项比对，不要把它表述成“全量终审”或“所有审核项都已完成”。
 - check_contract_seals：对合同图片文件夹执行红色签章审核，返回签章检测和审核结果。它当前只覆盖红色签章，不包含骑缝章、签名、电子章等其他要素。
+- check_cpseal：对合同 PDF、单张图片或图片目录执行骑缝章候选检测和跨页完整性初审。它只覆盖骑缝章，不等于普通签章审核或完整合同终审。
 - tavliy_search：根据查询词执行网页搜索，并返回搜索结果字典。
 - review_contract_validity：读取线性化合同文本，搜索合同主体公开信息，并给出合同有效性风险判断。
 - ls：列出本机目录下的文件和子目录。
@@ -384,6 +386,24 @@ def _build_tool_defs() -> list[dict[str, Any]]:
                         "input_path": {
                             "type": "string",
                             "description": "待审核的合同图片文件夹路径。目录内应包含按页存放的合同图片，支持绝对路径或相对当前工作目录的路径。",
+                        },
+                    },
+                    "required": ["input_path"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_cpseal",
+                "description": "对合同 PDF、单张图片或图片目录执行骑缝章审核。工具会先进行本地视觉候选检测和规则初审，并在需要时接入多模态大模型复审；当前返回结构化审核结果和风险说明。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "input_path": {
+                            "type": "string",
+                            "description": "待审核的合同 PDF、合同图片文件或合同图片目录路径。支持绝对路径或相对当前工作目录的路径。",
                         },
                     },
                     "required": ["input_path"],
@@ -843,6 +863,10 @@ def _tool_writefile(
 def _tool_check_contract_seals(input_path: str) -> dict[str, str]:
     return check_contract_seals_service(input_path)
 
+def _tool_check_cpseal(input_path: str) -> dict[str, str]:
+    ret = check_cpseal_services(Path(input_path))
+    return {"ok": True, "output": json.dumps(asdict(ret), ensure_ascii=False, indent=2)}
+
 def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
     """在原始模型配置上叠加 shell 专用 prompt 和工具目录。"""
     config = load_agent_config(config_path)
@@ -869,6 +893,7 @@ def _build_runtime_runner(config_path: str | Path | None = None) -> AgentRunner:
         "readimage": _tool_readimage,
         "writefile": _tool_writefile,
         "check_contract_seals": _tool_check_contract_seals,
+        "check_cpseal": _tool_check_cpseal,
     }
     return AgentRunner(config=runtime_config, tools=tools)
 
