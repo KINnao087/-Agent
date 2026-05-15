@@ -75,6 +75,14 @@ class PreparedCliMessage:
     display_text: str
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedInputPaste:
+    """粘贴到输入框时使用的短文本，以及提交时还原路径所需的映射。"""
+
+    input_text: str
+    aliases: dict[str, str]
+
+
 def _clean_dragged_path(raw_path: str) -> str:
     """把终端拖拽或粘贴进来的路径文本清理成普通文件系统路径。"""
     text = raw_path.strip().strip('"\'')
@@ -96,7 +104,7 @@ def _absolute_path_text(path_text: str) -> str:
 
 
 def _file_display_name(path_text: str) -> str:
-    """返回路径用于界面展示的短名称。"""
+    """返回路径用于输入框展示的短名称。"""
     cleaned = _clean_dragged_path(path_text)
     if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", cleaned):
         name = PureWindowsPath(cleaned).name
@@ -106,7 +114,7 @@ def _file_display_name(path_text: str) -> str:
 
 
 def prepare_cli_message(raw_message: str) -> PreparedCliMessage:
-    """把用户输入中的文件路径转成绝对路径，同时生成短路径展示文本。"""
+    """把用户输入中的文件路径转成绝对路径，同时生成聊天窗口展示文本。"""
     normalized_parts: list[str] = []
     display_parts: list[str] = []
     cursor = 0
@@ -121,8 +129,9 @@ def prepare_cli_message(raw_message: str) -> PreparedCliMessage:
         display_parts.append(raw_message[cursor:start])
 
         absolute_path = _absolute_path_text(path_text)
-        normalized_parts.append(f'"{absolute_path}"')
-        display_parts.append(f"[{_file_display_name(path_text)}]")
+        normalized_path = f'"{absolute_path}"'
+        normalized_parts.append(normalized_path)
+        display_parts.append(normalized_path)
         cursor = end
 
     normalized_parts.append(raw_message[cursor:])
@@ -134,31 +143,75 @@ def prepare_cli_message(raw_message: str) -> PreparedCliMessage:
 
 
 def format_paths_for_display(text: str) -> str:
-    """把任意文本里的绝对路径压缩成 [文件名]，用于聊天窗口展示。"""
+    """把任意文本里的路径规范化成完整路径，用于聊天窗口展示。"""
     return prepare_cli_message(text).display_text
+
+
+def prepare_paste_for_input(text: str) -> PreparedInputPaste:
+    """把粘贴文本里的路径压缩成输入框短别名，并记录别名对应的完整路径。"""
+    compact_text = " ".join((text or "").splitlines()).strip()
+    if not compact_text:
+        return PreparedInputPaste(input_text="", aliases={})
+
+    input_parts: list[str] = []
+    aliases: dict[str, str] = {}
+    cursor = 0
+
+    for match in _PATH_TOKEN_RE.finditer(compact_text):
+        start, end = match.span()
+        path_text = match.group("quoted_path") or match.group("bare") or ""
+        if not path_text:
+            continue
+
+        input_parts.append(compact_text[cursor:start])
+
+        alias = f"[{_file_display_name(path_text)}]"
+        normalized_path = f'"{_absolute_path_text(path_text)}"'
+        input_parts.append(alias)
+        aliases[alias] = normalized_path
+        cursor = end
+
+    input_parts.append(compact_text[cursor:])
+    return PreparedInputPaste(input_text="".join(input_parts), aliases=aliases)
+
+
+def expand_input_path_aliases(text: str, aliases: dict[str, str]) -> str:
+    """提交输入框内容前，把 [文件名] 短别名还原成完整路径。"""
+    expanded = text
+    for alias, path in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
+        expanded = expanded.replace(alias, path)
+    return expanded
 
 
 def normalize_paste_for_input(text: str) -> str:
     """把粘贴或终端拖入的路径文本转换成适合单行输入框的文本。"""
-    compact_text = " ".join((text or "").splitlines()).strip()
-    if not compact_text:
-        return ""
-    return prepare_cli_message(compact_text).agent_text
+    return prepare_paste_for_input(text).input_text
 
 
 class PathInput(Input):
     """支持把终端粘贴进来的文件路径规范化成绝对路径。"""
 
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.path_aliases: dict[str, str] = {}
+
     def on_paste(self, event: events.Paste) -> None:
-        pasted_text = normalize_paste_for_input(event.text)
-        if not pasted_text:
+        prepared_paste = prepare_paste_for_input(event.text)
+        if not prepared_paste.input_text:
             event.prevent_default()
             event.stop()
             return
 
-        self.insert_text_at_cursor(pasted_text)
+        self.path_aliases.update(prepared_paste.aliases)
+        self.insert_text_at_cursor(prepared_paste.input_text)
         event.prevent_default()
         event.stop()
+
+    def expand_path_aliases(self, text: str) -> str:
+        return expand_input_path_aliases(text, self.path_aliases)
+
+    def clear_path_aliases(self) -> None:
+        self.path_aliases.clear()
 
 
 class ContractCliShell(App[None]):
@@ -248,6 +301,10 @@ class ContractCliShell(App[None]):
         if raw_message.lower() in {"exit", "quit", ":q"}:
             self.exit()
             return
+
+        if isinstance(event.input, PathInput):
+            raw_message = event.input.expand_path_aliases(raw_message)
+            event.input.clear_path_aliases()
 
         message = prepare_cli_message(raw_message)
         event.input.value = ""
