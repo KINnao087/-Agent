@@ -4,6 +4,7 @@ from .dolma_export import build_dolma_records, write_jsonl
 from .input_adapter import normalize_document_images
 from .linearizer import build_linearized_document, linearize_ocr_page, write_linearized_outputs
 from .ocr2json import parse_file_to_json, parse_folder_to_json_list, parse_path_to_json_list
+from .ocr_result_cache import get_or_predict_ocr, image_sha256
 from .pdf2png import pdf2png
 
 __all__ = [
@@ -11,6 +12,8 @@ __all__ = [
     "build_linearized_document",
     "linearize_ocr_page",
     "normalize_document_images",
+    "get_or_predict_ocr",
+    "image_sha256",
     "parse_file_to_json",
     "parse_folder_to_json_list",
     "parse_path_to_json_list",
