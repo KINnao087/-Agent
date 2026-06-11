@@ -2,7 +2,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from core.domain.contracts import CPSealFragment, CPSealPageResult, CPSealResult, CPSealEdge
-from core.infrastructure.ai.logger import get_logger
+from core.shared.logging import get_logger
 from core.infrastructure.vision.seal import SealBBox
 from core.infrastructure.vision.seal.detector import find_red_contours, build_candidate_bbox
 from core.infrastructure.vision.seal.preprocessing import load_image, build_red_mask, clean_red_mask

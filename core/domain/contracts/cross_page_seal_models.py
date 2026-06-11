@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeAlias
 
-from core.infrastructure.vision.seal import SealBBox
+SealBBox: TypeAlias = list[int]
 
 #CPSeal = CrossPageSeal
 CPSealStatus = Literal[
@@ -27,15 +27,13 @@ CPSealRiskLevel = Literal[
     "unknown",
 ]
 
-# SealBBox = list[int]
-
 @dataclass(slots=True)
 class CPSealFragment:
     page_index: int
     image_path: str
     edge: CPSealEdge
     bbox: SealBBox
-    red_area: int = 0 #红色像素点的个数
+    red_area: int = 0
     score: float = 0.0
     crop_path: str = ""
 
@@ -43,7 +41,7 @@ class CPSealFragment:
 class CPSealPageResult:
     page_index: int
     image_path: str
-    fragments: list[CPSealFragment] = field(default_factory=list) #每一个对象的fragments都单独创一个list （坑）
+    fragments: list[CPSealFragment] = field(default_factory=list)
     @property
     def has_fragments(self) -> bool:
         return bool(self.fragments)

@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from urllib.parse import unquote, urlparse
 
-from core.application.agent import create_cli_chat_service
-from core.infrastructure.ai import get_logger
-from core.infrastructure.ai.logger import get_latest_log_path, start_live_log_terminal
+from core.application.agent.chat_service import create_cli_chat_service
+from core.shared.logging import get_latest_log_path, get_logger, start_live_log_terminal
 
 TEXTUAL_INSTALL_HINT = (
     "未安装 Textual。请先执行: .\\.venv\\Scripts\\python.exe -m pip install textual"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from core.application.documents import linearize_documents
-from core.infrastructure.ai.logger import get_logger
+from core.shared.logging import get_logger
 from core.shared.path_utils import resolve_path
 
 logger = get_logger("linearizer-command")

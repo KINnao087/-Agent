@@ -1,52 +1,45 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import pytest
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
 
-from core.infrastructure.ai.tasks import run_images_and_get_reply
-from core.infrastructure.ai.providers import ChatResult
+from core.infrastructure.ai.invoke import invoke_structured
 
 
-def test_run_images_and_get_reply_sends_multiple_image_urls() -> None:
-    config = SimpleNamespace(base_system="base", model="test-model")
-    provider = SimpleNamespace(chat=Mock(return_value=ChatResult(content='{"ok": true}')))
+class DemoResponse(BaseModel):
+    ok: bool
 
-    with (
-        patch("core.infrastructure.ai.tasks.load_agent_config", return_value=config),
-        patch("core.infrastructure.ai.tasks.build_provider", return_value=provider),
-        patch(
-            "core.infrastructure.ai.tasks._img2b64_dataurl",
-            side_effect=["data:image/png;base64,AAA", "data:image/png;base64,BBB"],
-        ),
-    ):
-        reply = run_images_and_get_reply(
-            image_paths=["D:/contracts/page1.png", "D:/contracts/page2.png"],
-            user_message="检查骑缝章",
-            work_description="你是骑缝章复审助手。",
+
+def test_invoke_structured_uses_langchain_model_and_multimodal_messages(tmp_path) -> None:
+    image_path = tmp_path / "page.png"
+    image_path.write_bytes(b"image")
+    structured_model = Mock()
+    structured_model.invoke.return_value = DemoResponse(ok=True)
+    model = Mock()
+    model.with_structured_output.return_value = structured_model
+    prompt = ChatPromptTemplate.from_messages(
+        [("system", "system"), ("human", "{message}")]
+    )
+
+    with patch("core.infrastructure.ai.invoke.build_chat_model", return_value=model):
+        result = invoke_structured(
+            prompt,
+            DemoResponse,
+            {"message": "review"},
+            image_paths=[image_path],
         )
 
-    assert reply == '{"ok": true}'
-    provider.chat.assert_called_once()
-    call_kwargs = provider.chat.call_args.kwargs
-    assert call_kwargs["model"] == "test-model"
-    assert call_kwargs["tool_defs"] == []
-
-    messages = call_kwargs["messages"]
-    assert messages[0] == {"role": "system", "content": "base\n\n你是骑缝章复审助手。"}
-    user_content = messages[1]["content"]
-    assert user_content[0] == {"type": "text", "text": "检查骑缝章"}
-    assert user_content[1] == {
-        "type": "image_url",
-        "image_url": {"url": "data:image/png;base64,AAA"},
-    }
-    assert user_content[2] == {
-        "type": "image_url",
-        "image_url": {"url": "data:image/png;base64,BBB"},
-    }
-
-
-def test_run_images_and_get_reply_rejects_empty_image_paths() -> None:
-    with pytest.raises(ValueError, match="image_paths must not be empty"):
-        run_images_and_get_reply(image_paths=[], user_message="检查骑缝章")
+    assert result.ok is True
+    model.with_structured_output.assert_called_once_with(
+        DemoResponse,
+        method="function_calling",
+    )
+    messages = structured_model.invoke.call_args.args[0]
+    assert messages[0].content == "system"
+    assert messages[1].content[0] == {"type": "text", "text": "review"}
+    assert messages[1].content[1]["type"] == "image_url"
+    assert messages[1].content[1]["image_url"]["url"].startswith(
+        "data:image/png;base64,"
+    )
