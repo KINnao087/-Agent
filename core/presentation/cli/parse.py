@@ -5,7 +5,7 @@ import json
 import sys
 
 from core.application.documents import parse_documents_to_structured_json
-from core.infrastructure.ai.logger import get_logger
+from core.shared.logging import get_logger
 from core.shared.path_utils import ensure_parent_dir
 
 logger = get_logger("parse-command")
