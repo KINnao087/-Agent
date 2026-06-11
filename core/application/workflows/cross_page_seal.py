@@ -6,15 +6,12 @@ from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from core.domain.contracts import CPSealFragment, CPSealResult
-from core.infrastructure.text import pdf2png
+from core.infrastructure.text import normalize_document_images
 from core.infrastructure.vision.seal.cross_page_detector import (
     analyze_cross_page_seal_results,
     detect_cross_page_seal_fragments,
 )
 from core.infrastructure.vision.seal.cross_page_review import review_spseal_results
-
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
-
 
 class CrossPageSealState(TypedDict, total=False):
     input_path: str
@@ -25,21 +22,7 @@ class CrossPageSealState(TypedDict, total=False):
 
 
 def collect_images(state: CrossPageSealState) -> CrossPageSealState:
-    path = Path(state["input_path"])
-    if path.suffix.lower() == ".pdf":
-        output_dir = path.parent / "_pdf_pages" / path.stem
-        return {"image_paths": [Path(item) for item in pdf2png(path, output_dir)]}
-    if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES:
-        return {"image_paths": [path]}
-    if path.is_dir():
-        return {
-            "image_paths": sorted(
-                item
-                for item in path.iterdir()
-                if item.is_file() and item.suffix.lower() in IMAGE_SUFFIXES
-            )
-        }
-    raise ValueError(f"unsupported input path: {path}")
+    return {"image_paths": normalize_document_images(state["input_path"])}
 
 
 def detect_fragments(state: CrossPageSealState) -> CrossPageSealState:

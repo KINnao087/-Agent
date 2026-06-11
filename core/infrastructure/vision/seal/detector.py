@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import numpy.typing as npt
 
+from core.infrastructure.text.input_adapter import normalize_document_images
+
 from .models import SealBBox, SealCandidate
 from .preprocessing import (
     MaskArray,
@@ -185,33 +187,14 @@ def detect_seal_candidates(
 def detect_seal_candidates_page(
     image_file_path: str | Path
 ) -> list[list[SealCandidate]]:
-    """传入一个含有所有合同图片的文件夹，返回每页的签章候选结果。"""
-    image_file_path = Path(image_file_path)
-
-    if not image_file_path.exists():
-        raise FileNotFoundError(f"path not found: {image_file_path}")
-    if not image_file_path.is_dir():
-        raise NotADirectoryError(f"path is not a directory: {image_file_path}")
-
-    # 剔除非图片文件
-    image_suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
-    image_paths = sorted(
-        path for path in image_file_path.iterdir()
-        if path.is_file() and path.suffix.lower() in image_suffixes
-    )
-
-    ret: list[list[SealCandidate]] = []
-
-    for page_index, image_path in enumerate(image_paths, start=1):
-        try:
-            candidates = detect_seal_candidates(
-                image_path=image_path,
-                page_index=page_index,
-            )
-        except Exception as exc:
-            print(f"detect seal failed: page={page_index}, path={image_path}, error={exc}")
-            candidates = []
-
-        ret.append(candidates)
-
-    return ret
+    """Normalize supported input and return seal candidates for every PNG page."""
+    return [
+        detect_seal_candidates(
+            image_path=image_path,
+            page_index=page_index,
+        )
+        for page_index, image_path in enumerate(
+            normalize_document_images(image_file_path),
+            start=1,
+        )
+    ]
