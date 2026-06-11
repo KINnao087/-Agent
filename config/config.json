@@ -1,11 +1,7 @@
 {
-  "provider": "api",
   "model": "qwen3.5-flash",
-  "keep_last": 4000,
-  "tool_defs": [],
   "api": {
     "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "api_key": null,
     "temperature": 0.2
   }
 }

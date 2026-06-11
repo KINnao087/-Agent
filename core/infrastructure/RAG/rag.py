@@ -1,162 +1,115 @@
-from typing import List
+from __future__ import annotations
+
 import os
 import threading
+from pathlib import Path
+
+import chromadb
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+CHROMA_DB_PATH = PROJECT_ROOT / "data" / "knowledge" / "db" / "chroma_db"
+VECTOR_COUNTS = 5
+SEARCH_RANKS = 5
 
 _model_lock = threading.RLock()
-_embeddings_model = None
+_embedding_model = None
 _cross_encoder = None
+_chromadb_client = None
+_chromadb_collection = None
+
+
+def split2chunks(file_path: str | Path) -> list[str]:
+    return [
+        chunk
+        for chunk in Path(file_path).read_text(encoding="utf-8").split("\n\n")
+        if chunk.strip()
+    ]
 
 
 def _get_embedding_model():
     global _embedding_model
-
     if _embedding_model is None:
         with _model_lock:
             if _embedding_model is None:
                 from sentence_transformers import SentenceTransformer
 
-                model_path = os.getenv(
-                    "RAG_EMBEDDING_MODEL",
-                    "data/models/text2vec-base-chinese",
+                _embedding_model = SentenceTransformer(
+                    os.getenv(
+                        "RAG_EMBEDDING_MODEL",
+                        "data/models/text2vec-base-chinese",
+                    )
                 )
-                _embedding_model = SentenceTransformer(model_path)
-
     return _embedding_model
 
-VECTOR_COUNTS = 5
-SEARCH_RANKS = 5
-
-def split2chunks(file: str) -> List[str]:
-    """把文本拆封成小块"""
-    f = open(file, 'r', encoding='utf-8')
-    contents = f.read()
-
-    return [c for c in contents.split("\n\n")]
-
-
-# from sentence_transformers import SentenceTransformer
-# embedding_model = SentenceTransformer("shibing624/text2vec-base-chinese")
-
-def embed_chunk(chunk: str) -> List[float]:
-    """把文本转换成浮点向量"""
-    model = _get_embedding_model()
-    embeddings = model.encode(chunk, normalize_embeddings=True)
-    return embeddings.tolist()
-
-
-import chromadb
-from pathlib import Path
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CHROMA_DB_PATH = PROJECT_ROOT / "data" / "knowledge" / "db" / "chroma_db"
-# chromadb_client = chromadb.EphemeralClient() #内存型数据库，不会写入磁盘
-_chromadb_client = None
-_chromadb_collection = None
-
-
-def _get_chromadb_collection():
-    """惰性获取 Chroma collection，避免长期复用已关闭 client。"""
-    global _chromadb_client, _chromadb_collection
-    if _chromadb_collection is None:
-        _chromadb_client = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
-        _chromadb_collection = _chromadb_client.get_or_create_collection(name="default")
-    return _chromadb_collection
-
-
-def _reset_chromadb_client() -> None:
-    """丢弃当前 Chroma client，下次访问时重新创建。"""
-    global _chromadb_client, _chromadb_collection
-    _chromadb_client = None
-    _chromadb_collection = None
-
-def save_embeddings(chunks: List[str], embeddings: List[List[float]]):
-    """保存向量和文件到数据库中"""
-    collection = _get_chromadb_collection()
-    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        collection.add(
-            documents=[chunk],
-            embeddings=[embedding],
-            ids=[str(i)],
-        )
-
-def retrieve(query: str, top_k: int) -> List[str]:
-    """向量召回，吧问题变成一串向量，随后去数据库中找意思最接近的"""
-    query_embeddings = embed_chunk(query)
-    try:
-        res = _get_chromadb_collection().query(
-            query_embeddings=[query_embeddings],
-            n_results=top_k,
-        )
-    except RuntimeError as exc:
-        if "client has been closed" not in str(exc):
-            raise
-        _reset_chromadb_client()
-        res = _get_chromadb_collection().query(
-            query_embeddings=[query_embeddings],
-            n_results=top_k,
-        )
-    # print(res)
-    return res["documents"][0]
 
 def _get_cross_encoder():
-    """惰性加载 rerank 模型，避免每次检索重复初始化。"""
     global _cross_encoder
     if _cross_encoder is None:
         with _model_lock:
             if _cross_encoder is None:
                 from sentence_transformers import CrossEncoder
 
-                model_path = os.getenv(
-                    "RAG_RERANK_MODEL",
-                    "data/models/mmarco-mMiniLMv2-L12-H384-v1",
+                _cross_encoder = CrossEncoder(
+                    os.getenv(
+                        "RAG_RERANK_MODEL",
+                        "data/models/mmarco-mMiniLMv2-L12-H384-v1",
+                    )
                 )
-                _cross_encoder = CrossEncoder(model_path)
-
     return _cross_encoder
 
-def rerank(query: str, retrieve_chunks: List[str], top_k: int) -> List[str]:
-    """把获取的向量按照和问题的关联程度重排。并获取前top_k个"""
-    pairs = [(query, chunk) for chunk in retrieve_chunks]
-    scores = _get_cross_encoder().predict(pairs)
 
-    scored_chunks = list(zip(retrieve_chunks, scores))
-    scored_chunks.sort(key=lambda x: x[1], reverse=True)
+def _get_collection():
+    global _chromadb_client, _chromadb_collection
+    if _chromadb_collection is None:
+        _chromadb_client = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
+        _chromadb_collection = _chromadb_client.get_or_create_collection("default")
+    return _chromadb_collection
 
-    filtered_chunks = [chunk for chunk, score in scored_chunks if score >= -3.0]
-    # for chunk, score in scored_chunks[:top_k]:
-    #     print(f"[{chunk}] :: {score}")
 
-    # 返回前判断资料和问题的联系程度
-    return filtered_chunks[:top_k]
+def embed_chunk(chunk: str) -> list[float]:
+    return _get_embedding_model().encode(
+        chunk,
+        normalize_embeddings=True,
+    ).tolist()
 
-def get_and_rerank_chunks(query: str, get_top_k: int = VECTOR_COUNTS, rank_top_k: int = SEARCH_RANKS) -> List[str]:
-    retrieve_chunks = retrieve(query, get_top_k)
-    reranked_chunks = rerank(query, retrieve_chunks, rank_top_k)
 
-    return reranked_chunks
-
-def format_chunks(chunks: List[str]) -> str:
-    """把检索到的文本块格式化为可拼进提示词的参考资料。"""
-    return "\n\n".join(
-        f"[资料{i}]\n{chunk.strip()}"
-        for i, chunk in enumerate(chunks, start=1)
-        if chunk.strip()
+def save_embeddings(chunks: list[str], embeddings: list[list[float]]) -> None:
+    _get_collection().upsert(
+        documents=chunks,
+        embeddings=embeddings,
+        ids=[str(index) for index in range(len(chunks))],
     )
 
-def main():
-    # chunks = split2chunks("D:\pywork\PythonProject\data\knowledge\contract_review_rules\contract_type_rules.md")
-    # embeddings = [embed_chunk(chunk) for chunk in chunks]
-    # save_embeddings(chunks, embeddings)
 
-    query = "帮我检查这个合同"
-    retrieved_chunks = retrieve(query, top_k=30)
-    # for i, chunk in enumerate(retrieved_chunks):
-    #     print(f"[{i}] {chunk}\n")
+def retrieve(query: str, top_k: int = VECTOR_COUNTS) -> list[str]:
+    result = _get_collection().query(
+        query_embeddings=[embed_chunk(query)],
+        n_results=top_k,
+    )
+    return result["documents"][0]
 
-    reranked_chunks = rerank(query, retrieved_chunks, 5)
-    for i, chunk in enumerate(reranked_chunks):
-        print(f"[{i}] {chunk}\n")
 
-    return 0
+def rerank(
+    query: str,
+    chunks: list[str],
+    top_k: int = SEARCH_RANKS,
+) -> list[str]:
+    scores = _get_cross_encoder().predict([(query, chunk) for chunk in chunks])
+    ranked = sorted(zip(chunks, scores), key=lambda item: item[1], reverse=True)
+    return [chunk for chunk, score in ranked if score >= -3.0][:top_k]
 
-if __name__ == '__main__':
-    main()
+
+def get_and_rerank_chunks(
+    query: str,
+    get_top_k: int = VECTOR_COUNTS,
+    rank_top_k: int = SEARCH_RANKS,
+) -> list[str]:
+    return rerank(query, retrieve(query, get_top_k), rank_top_k)
+
+
+def format_chunks(chunks: list[str]) -> str:
+    return "\n\n".join(
+        f"[资料{index}]\n{chunk.strip()}"
+        for index, chunk in enumerate(chunks, start=1)
+        if chunk.strip()
+    )

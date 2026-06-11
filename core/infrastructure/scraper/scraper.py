@@ -482,20 +482,3 @@ def get_company_snapshot(keyno: str, cookie_header: str | None = None) -> dict[s
         "employees": get_company_employee_list(keyno, cookie_header=cookie_header),
         "location": get_company_location(keyno, cookie_header=cookie_header),
     }
-
-from core.shared import format_json_output
-
-def main() -> None:
-    """本地手工调试入口。"""
-    try:
-        company_key = get_company_key("深圳市腾讯计算机系统有限公司")
-        print(company_key)
-        if company_key:
-            print(get_company_employee_list(get_company_snapshot(company_key)))
-
-    except PermissionError as exc:
-        print(exc)
-
-
-if __name__ == "__main__":
-    main()
