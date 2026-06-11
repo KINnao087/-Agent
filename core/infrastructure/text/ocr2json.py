@@ -6,7 +6,7 @@ from core.shared.path_utils import resolve_path
 
 from .input_adapter import normalize_document_images
 from .linearizer import linearize_ocr_page
-from .paddle_ocr import get_paddle_ocr, predict_ocr_image
+from .ocr_result_cache import get_or_predict_ocr
 
 
 def parse_file_to_json(file_path: str | Path) -> dict:
@@ -17,7 +17,7 @@ def parse_file_to_json(file_path: str | Path) -> dict:
     if path.suffix.lower() != ".png":
         raise ValueError("OCR input must be a normalized PNG image")
 
-    return predict_ocr_image(get_paddle_ocr(), str(path))
+    return get_or_predict_ocr(path)
 
 
 def parse_path_to_json_list(path_value: str | Path | None) -> list[dict]:
