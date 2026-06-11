@@ -15,7 +15,7 @@ from core.infrastructure.contracts.integrity_review import (
     review_contract_integrity,
     review_contract_seal_integrity,
 )
-from core.infrastructure.text import linearize_ocr_page, parse_folder_to_json_list
+from core.infrastructure.text import linearize_ocr_page, parse_path_to_json_list
 from core.infrastructure.vision.seal import detect_seal_candidates
 from core.infrastructure.vision.seal.models import SealCandidate
 
@@ -35,7 +35,7 @@ def load_contract_pages(state: IntegrityState) -> IntegrityState:
     if "contract_pages" in state:
         return {}
     path = Path(state["contract_path"])
-    return {"contract_pages": parse_folder_to_json_list(path)}
+    return {"contract_pages": parse_path_to_json_list(path)}
 
 
 def build_page_texts(state: IntegrityState) -> IntegrityState:

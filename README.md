@@ -70,6 +70,15 @@ TAVILY_API_KEY=...
 
 模型名称和 API 地址配置在 `config/config.json`。
 
+所有文档流程共用同一个输入适配器：
+
+- PDF：按页渲染为 PNG
+- PNG：直接使用
+- JPG/JPEG、BMP、WebP：转换为 PNG
+- 目录：按文件名顺序展开其中的受支持文件
+
+转换结果写入输入路径旁的 `_normalized_images/`。
+
 ## 运行
 
 交互式 CLI：

@@ -6,28 +6,18 @@ from pathlib import Path
 from core.infrastructure.ai import invoke_structured
 from core.infrastructure.ai.prompts import SEAL_REVIEW_PROMPT
 from core.infrastructure.ai.schemas import SealPageReviewResponse
+from core.infrastructure.text import normalize_document_images
 
 from .detector import detect_seal_candidates
-
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
-
-
-def _image_paths(input_path: str | Path) -> list[Path]:
-    path = Path(input_path)
-    if not path.is_dir():
-        raise NotADirectoryError(path)
-    return sorted(
-        item
-        for item in path.iterdir()
-        if item.is_file() and item.suffix.lower() in IMAGE_SUFFIXES
-    )
-
 
 def check_contract_seals(input_path: str | Path) -> dict[str, str]:
     page_results = []
     seal_page_paths = []
 
-    for page_index, image_path in enumerate(_image_paths(input_path), start=1):
+    for page_index, image_path in enumerate(
+        normalize_document_images(input_path),
+        start=1,
+    ):
         candidates = detect_seal_candidates(image_path=image_path, page_index=page_index)
         if candidates:
             seal_page_paths.append(str(image_path))

@@ -93,6 +93,29 @@ def test_integrity_graph_runs_text_review_without_seal_review() -> None:
     assert state["result"] is expected
 
 
+def test_integrity_graph_normalizes_any_supported_contract_input() -> None:
+    with (
+        patch(
+            "core.application.workflows.integrity.parse_path_to_json_list",
+            return_value=[],
+        ) as parse,
+        patch(
+            "core.application.workflows.integrity.review_contract_integrity",
+            return_value=ContractIntegrityResult(),
+        ),
+    ):
+        state = INTEGRITY_GRAPH.invoke(
+            {
+                "contract_path": "contract.jpg",
+                "detect_seals": False,
+                "review_seals": False,
+            }
+        )
+
+    parse.assert_called_once()
+    assert state["contract_pages"] == []
+
+
 def test_cross_page_seal_graph_runs_detection_analysis_and_review(tmp_path) -> None:
     image_path = tmp_path / "page.png"
     image_path.write_bytes(b"image")
@@ -106,6 +129,10 @@ def test_cross_page_seal_graph_runs_detection_analysis_and_review(tmp_path) -> N
     reviewed = CPSealResult(status="present")
     with (
         patch(
+            "core.application.workflows.cross_page_seal.normalize_document_images",
+            return_value=[image_path],
+        ) as normalize,
+        patch(
             "core.application.workflows.cross_page_seal.detect_cross_page_seal_fragments",
             return_value=[fragment],
         ),
@@ -118,8 +145,9 @@ def test_cross_page_seal_graph_runs_detection_analysis_and_review(tmp_path) -> N
             return_value=reviewed,
         ),
     ):
-        state = CROSS_PAGE_SEAL_GRAPH.invoke({"input_path": str(image_path)})
+        state = CROSS_PAGE_SEAL_GRAPH.invoke({"input_path": "contract.jpg"})
 
+    normalize.assert_called_once_with("contract.jpg")
     assert state["pre_result"].page_count == 1
     assert state["result"] is reviewed
 

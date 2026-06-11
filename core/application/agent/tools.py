@@ -49,7 +49,7 @@ def parse_documents(
     attachments_path: str = "",
     invoice_path: str = "",
 ) -> str:
-    """将合同、附件和发票解析为结构化 JSON。"""
+    """将 PDF、PNG、JPG 或图片目录中的合同、附件和发票解析为结构化 JSON。"""
     result = parse_documents_to_structured_json(
         file_path=file_path,
         attachments_path=attachments_path or None,
@@ -72,7 +72,7 @@ def linearize_contract_documents(
     attachments_path: str = "",
     invoice_path: str = "",
 ) -> str:
-    """将合同、附件和发票 OCR 线性化并写入文本文件。"""
+    """将 PDF、PNG、JPG 或图片目录中的文档 OCR 线性化并写入文本文件。"""
     target_dir = output_dir or _default_output_dir(file_path, "linearized_output")
     result = linearize_documents(
         file_path=file_path,
