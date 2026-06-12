@@ -3,8 +3,11 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from core.domain.contracts.models import ContractBasicInfo
+from core.infrastructure.ai import AIConfigRole
 from core.infrastructure.ai.prompts import BASIC_INFO_PROMPT
-from core.infrastructure.contracts.basic_info_extractor import extract_contract_basic_info
+from core.infrastructure.contracts.basic_info_extractor import (
+    extract_contract_basic_info,
+)
 
 
 def test_extract_contract_basic_info_uses_structured_langchain_call() -> None:
@@ -26,4 +29,5 @@ def test_extract_contract_basic_info_uses_structured_langchain_call() -> None:
         BASIC_INFO_PROMPT,
         ContractBasicInfo,
         {"contract_text": "合同正文"},
+        role=AIConfigRole.TEXT,
     )

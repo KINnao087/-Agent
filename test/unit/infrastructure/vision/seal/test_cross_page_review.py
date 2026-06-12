@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from core.domain.contracts import CPSealFragment, CPSealResult
+from core.infrastructure.ai import AIConfigRole
 from core.infrastructure.ai.schemas import CrossPageSealReviewResponse
 from core.infrastructure.vision.seal.cross_page_review import review_spseal_results
 
@@ -53,6 +54,7 @@ def test_review_spseal_results_merges_structured_vlm_result() -> None:
         "D:/contracts/page1.png",
         "D:/contracts/page2.png",
     ]
+    assert invoke.call_args.kwargs["role"] is AIConfigRole.VISION
 
 
 def test_review_spseal_results_skips_model_without_fragments() -> None:

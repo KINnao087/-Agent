@@ -563,7 +563,13 @@ class ContractReviewService:
     ) -> dict[str, Any]:
         def operation() -> dict[str, Any]:
             manifest = self.store.load(review_id)
-            basic_info = self.check_basic_info(review_id)["contract_basic_info"]
+            basic_info_result = self.check_basic_info(review_id)
+            basic_info = basic_info_result.get("contract_basic_info")
+            if not basic_info:
+                error = basic_info_result.get("error") or "基础信息结果不可用"
+                raise RuntimeError(
+                    f"basic info dependency failed: {error}"
+                )
             contract_text = Path(manifest.artifacts["contract_text"]).read_text(
                 encoding="utf-8"
             )
