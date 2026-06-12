@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from core.application.workflows.documents import LINEARIZE_DOCUMENTS_GRAPH
+from core.infrastructure.text import write_linearized_outputs
+
+from ._loader import load_document_payload
 
 @dataclass(slots=True)
 class LinearizeDocumentsResult:
@@ -21,18 +23,17 @@ def linearize_documents(
     invoice_path: str | None = None,
 ) -> LinearizeDocumentsResult:
     """执行 OCR 载荷装配，并写出线性化文本结果。"""
-    state = LINEARIZE_DOCUMENTS_GRAPH.invoke(
-        {
-            "file_path": file_path,
-            "attachments_path": attachments_path,
-            "invoice_path": invoice_path,
-            "output_dir": output_dir,
-        }
+    ocr_payload = load_document_payload(
+        file_path,
+        attachments_path,
+        invoice_path,
     )
-    ocr_payload = state["ocr_payload"]
 
     return LinearizeDocumentsResult(
         ocr_payload=ocr_payload,
         linearized_document=ocr_payload["linearized"],
-        output_paths=state["output_paths"],
+        output_paths=write_linearized_outputs(
+            ocr_payload["linearized"],
+            output_dir,
+        ),
     )
