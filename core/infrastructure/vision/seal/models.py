@@ -17,6 +17,7 @@ class SealCandidate:
     bbox: SealBBox
     crop_path: str | None = None
     enhanced_crop_path: str | None = None
+    score: float | None = None
 
 
 @dataclass(slots=True)
