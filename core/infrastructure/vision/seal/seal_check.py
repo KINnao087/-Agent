@@ -21,18 +21,24 @@ def check_contract_seals(input_path: str | Path) -> dict[str, str]:
         candidates = detect_seal_candidates(image_path=image_path, page_index=page_index)
         if candidates:
             seal_page_paths.append(str(image_path))
+            review_images = [image_path]
+            review_images.extend(
+                Path(candidate.enhanced_crop_path)
+                for candidate in candidates[:3]
+                if candidate.enhanced_crop_path
+            )
             review = invoke_structured(
                 SEAL_REVIEW_PROMPT,
                 SealPageReviewResponse,
                 {
                     "page_index": page_index,
                     "candidates": "\n".join(
-                        f"{index}: {candidate.bbox}"
+                        f"{index}: bbox={candidate.bbox}, score={candidate.score}"
                         for index, candidate in enumerate(candidates)
                     ),
                     "pages_text": "",
                 },
-                image_paths=[image_path],
+                image_paths=review_images,
             ).model_dump()
         else:
             review = {"candidate_reviews": []}

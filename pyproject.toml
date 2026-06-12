@@ -31,7 +31,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "optuna>=4,<5",
     "pytest>=9,<10",
+    "scikit-learn>=1.8,<2",
 ]
 
 [tool.pytest.ini_options]
