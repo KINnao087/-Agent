@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from core.application.workflows.documents import PARSE_DOCUMENTS_GRAPH
+from core.infrastructure.ai.document import structure_ocr_json
+
+from ._loader import load_document_payload
 
 @dataclass(slots=True)
 class ParseDocumentsResult:
@@ -19,14 +21,12 @@ def parse_documents_to_structured_json(
     invoice_path: str | None = None,
 ) -> ParseDocumentsResult:
     """执行 OCR 载荷装配与 AI 结构化解析的应用用例。"""
-    state = PARSE_DOCUMENTS_GRAPH.invoke(
-        {
-            "file_path": file_path,
-            "attachments_path": attachments_path,
-            "invoice_path": invoice_path,
-        }
+    ocr_payload = load_document_payload(
+        file_path,
+        attachments_path,
+        invoice_path,
     )
     return ParseDocumentsResult(
-        ocr_payload=state["ocr_payload"],
-        structured_json=state["structured_json"],
+        ocr_payload=ocr_payload,
+        structured_json=structure_ocr_json(ocr_payload),
     )

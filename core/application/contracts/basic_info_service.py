@@ -1,23 +1,27 @@
 from __future__ import annotations
 
-from core.application.workflows.basic_info import BASIC_INFO_GRAPH
+from core.domain.contracts.compare import build_summary, compare_basic_info
 from core.domain.contracts.models import (
     CheckBasicInfoResponse,
     ContractBasicInfo,
 )
+from core.infrastructure.contracts import extract_contract_basic_info
 
 
 def check_basic_info(
     contract_text: str,
     platform_basic_info: ContractBasicInfo,
 ) -> CheckBasicInfoResponse:
-    state = BASIC_INFO_GRAPH.invoke(
-        {
-            "contract_text": contract_text,
-            "platform_basic_info": platform_basic_info,
-        }
+    contract_basic_info = extract_contract_basic_info(contract_text)
+    compare_result, flat_result = compare_basic_info(
+        contract_basic_info,
+        platform_basic_info,
     )
-    return state["response"]
+    return CheckBasicInfoResponse(
+        contract_basic_info=contract_basic_info,
+        compare_result=compare_result,
+        summary=build_summary(flat_result),
+    )
 
 
 check_basic_info_service = check_basic_info
