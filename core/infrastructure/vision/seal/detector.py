@@ -8,6 +8,11 @@ import numpy.typing as npt
 
 from core.infrastructure.text.input_adapter import normalize_document_images
 
+from .hybrid_detector import (
+    MAX_CANDIDATES,
+    HybridSealCandidate,
+    detect_page_seal,
+)
 from .models import SealBBox, SealCandidate
 from .preprocessing import (
     MaskArray,
@@ -133,31 +138,25 @@ def detect_seal_candidates(
     """
     image_path = Path(image_path)
     image = load_image(image_path)
-    red_mask = build_red_mask(image)
-    clean_mask = clean_red_mask(red_mask)
-    contours = find_red_contours(
-        clean_mask,
-        min_contour_area=MIN_CONTOUR_AREA,
-    )
-    candidate_boxes = merge_candidate_bboxes(
-        [build_candidate_bbox(contour) for contour in contours]
-    )
+    decision = detect_page_seal(image)
+    if not decision.has_seal:
+        return []
+
+    page_height, page_width = image.shape[:2]
+    detected = decision.candidates or [
+        HybridSealCandidate(
+            bbox=[0, 0, page_width, page_height],
+            score=decision.score,
+            features=[],
+        )
+    ]
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     candidates: list[SealCandidate] = []
-    for index, bbox in enumerate(candidate_boxes):
+    for index, detected_candidate in enumerate(detected):
+        bbox = detected_candidate.bbox
         x, y, width, height = bbox
-        bbox_area = width * height
-        aspect_ratio = max(width / height, height / width)
-
-        if width < MIN_BBOX_WIDTH or height < MIN_BBOX_HEIGHT:
-            continue
-        if bbox_area < MIN_BBOX_AREA:
-            continue
-        if aspect_ratio > MAX_BBOX_ASPECT_RATIO:
-            continue
-
         crop = crop_bbox(image, x, y, width, height)
         enhanced_crop = enhance_seal_crop(crop)
 
@@ -176,10 +175,11 @@ def detect_seal_candidates(
                 bbox=bbox,
                 crop_path=str(crop_path),
                 enhanced_crop_path=str(enhanced_crop_path),
+                score=detected_candidate.score,
             )
         )
 
-        if len(candidates) >= MAX_CANDIDATES_PER_PAGE:
+        if len(candidates) >= MAX_CANDIDATES:
             break
 
     return candidates
