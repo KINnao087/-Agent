@@ -21,8 +21,16 @@ def build_chat_model(
         "base_url": settings.base_url,
         "temperature": settings.temperature,
     }
-    if enable_thinking is not None and "qwen" in settings.model.lower():
-        kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+    if enable_thinking is not None:
+        model_name = settings.model.lower()
+        if "qwen" in model_name:
+            kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+        elif "deepseek" in model_name:
+            kwargs["extra_body"] = {
+                "thinking": {
+                    "type": "enabled" if enable_thinking else "disabled"
+                }
+            }
     return ChatOpenAI(
         **kwargs,
     )
