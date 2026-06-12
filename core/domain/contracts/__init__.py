@@ -6,6 +6,7 @@ from .integrity_models import (
     ContractPageOCR,
     ContractPageText,
     ContractSealIntegrityResult,
+    TextIntegrityReviewResult,
 )
 from .models import CheckBasicInfoRequest, CheckBasicInfoResponse, ContractBasicInfo
 from .cross_page_seal_models import (
@@ -24,6 +25,7 @@ __all__ = [
     "ContractPageOCR",
     "ContractPageText",
     "ContractSealIntegrityResult",
+    "TextIntegrityReviewResult",
     "build_summary",
     "compare_basic_info",
 

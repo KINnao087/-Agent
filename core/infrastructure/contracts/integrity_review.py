@@ -16,6 +16,7 @@ from core.domain.contracts.integrity_models import (
     SealConsistencyResult,
     SealForgeryRiskResult,
     SealOwner,
+    TextIntegrityReviewResult,
 )
 from core.infrastructure.ai import invoke_structured
 from core.infrastructure.ai.prompts import CONTRACT_INTEGRITY_PROMPT, SEAL_REVIEW_PROMPT
@@ -34,11 +35,11 @@ def _pages_text(page_texts: list[ContractPageText]) -> str:
     )
 
 
-def _integrity_result(
+def _text_integrity_result(
     response: IntegrityReviewResponse,
     page_texts: list[ContractPageText],
-) -> ContractIntegrityResult:
-    return ContractIntegrityResult(
+) -> TextIntegrityReviewResult:
+    return TextIntegrityReviewResult(
         page_texts=page_texts,
         contract_continuity=ContractContinuityResult(
             status=response.contract_continuity.status,
@@ -72,12 +73,25 @@ def _integrity_result(
 def review_contract_integrity(
     page_texts: list[ContractPageText],
 ) -> ContractIntegrityResult:
+    result = review_contract_text_integrity(page_texts)
+    return ContractIntegrityResult(
+        page_texts=result.page_texts,
+        contract_continuity=result.contract_continuity,
+        contract_completeness=result.contract_completeness,
+        replacement_page=result.replacement_page,
+        contract_clarity=result.contract_clarity,
+    )
+
+
+def review_contract_text_integrity(
+    page_texts: list[ContractPageText],
+) -> TextIntegrityReviewResult:
     response = invoke_structured(
         CONTRACT_INTEGRITY_PROMPT,
         IntegrityReviewResponse,
         {"pages_text": _pages_text(page_texts)},
     )
-    return _integrity_result(response, page_texts)
+    return _text_integrity_result(response, page_texts)
 
 
 def _candidate_result(

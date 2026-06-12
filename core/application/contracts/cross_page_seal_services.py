@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from core.application.workflows.cross_page_seal import CROSS_PAGE_SEAL_GRAPH
 from core.domain.contracts import CPSealResult
+from core.infrastructure.text import normalize_document_images
+from core.infrastructure.vision.seal import review_cross_page_seal_images
 
 
 def check_cpseal_services(input_path: str | Path) -> CPSealResult:
-    return CROSS_PAGE_SEAL_GRAPH.invoke(
-        {"input_path": str(input_path)}
-    )["result"]
+    return review_cross_page_seal_images(
+        normalize_document_images(input_path)
+    )

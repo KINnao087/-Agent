@@ -128,12 +128,18 @@ class ContractSealIntegrityResult:
 
 
 @dataclass(slots=True)
-class ContractIntegrityResult:
-    """合同完整性综合审核结果。"""
+class TextIntegrityReviewResult:
+    """合同文本和页面完整性审核结果，不包含任何签章结论。"""
 
     page_texts: list[ContractPageText] = field(default_factory=list)
     contract_continuity: ContractContinuityResult = field(default_factory=ContractContinuityResult)
     contract_completeness: ContractCompletenessResult = field(default_factory=ContractCompletenessResult)
     replacement_page: ReplacementPageResult = field(default_factory=ReplacementPageResult)
     contract_clarity: ContractClarityResult = field(default_factory=ContractClarityResult)
+
+
+@dataclass(slots=True)
+class ContractIntegrityResult(TextIntegrityReviewResult):
+    """兼容旧接口的文本完整性与普通签章组合结果。"""
+
     contract_seal_integrity: ContractSealIntegrityResult = field(default_factory=ContractSealIntegrityResult)

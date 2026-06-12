@@ -1,59 +1,94 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.application.agent.tools import (
     TOOLS,
-    check_cross_page_seal,
-    linearize_contract_documents,
+    check_contract_seals,
+    prepare_contract,
+    write_review_report,
 )
-from core.domain.contracts import CPSealResult
 
 
-def test_tools_have_unique_names_and_inferred_schemas() -> None:
-    names = [tool.name for tool in TOOLS]
-    assert len(names) == len(set(names))
-    assert {"review_contract", "review_validity", "check_contract_seals"} <= set(names)
+def test_agent_exposes_business_review_tools_not_low_level_processing_tools() -> None:
+    names = {tool.name for tool in TOOLS}
+
+    assert {
+        "find_contract_review",
+        "prepare_contract",
+        "check_basic_info",
+        "check_text_integrity",
+        "check_contract_seals",
+        "check_cross_page_seal",
+        "check_contract_authenticity",
+        "get_review_status",
+        "write_review_report",
+        "get_review_result",
+        "list_files",
+        "read_text_file",
+        "read_image",
+        "write_text_file",
+    } == names
+    assert {
+        "pdf2pngs",
+        "parse_documents",
+        "linearize_contract_documents",
+        "review_contract",
+        "review_validity",
+        "web_search",
+    }.isdisjoint(names)
+    assert len(names) == len(TOOLS)
     assert all(tool.args_schema is not None for tool in TOOLS)
 
 
-def test_linearize_tool_uses_default_output_directory() -> None:
-    fake_result = SimpleNamespace(
-        ocr_payload={"contract": [{}], "attachments": [], "invoice": []},
-        output_paths={"contract": "D:/contracts/linearized_output/contract_linearized.txt"},
-    )
+def test_prepare_contract_tool_returns_review_id_from_shared_service() -> None:
+    service = Mock()
+    service.prepare_contract.return_value = {
+        "review_id": "review_123",
+        "cached": False,
+    }
     with patch(
-        "core.application.agent.tools.linearize_documents",
-        return_value=fake_result,
-    ) as linearize:
+        "core.application.agent.tools.get_contract_review_service",
+        return_value=service,
+    ):
         payload = json.loads(
-            linearize_contract_documents.invoke(
-                {"file_path": "D:/contracts/contract.pdf"}
+            prepare_contract.invoke(
+                {
+                    "contract_path": "D:/contracts/contract.pdf",
+                    "platform_basic_info": {"contract_no": "HT-1"},
+                }
             )
         )
 
-    assert payload["contract_pages"] == 1
-    assert payload["output_dir"].endswith("linearized_output")
-    linearize.assert_called_once()
-
-
-def test_cross_page_seal_tool_serializes_domain_result() -> None:
-    result = CPSealResult(
-        status="present",
-        page_count=2,
-        detected_pages=[1, 2],
-        main_edge="right",
-        risk_level="low",
+    assert payload["review_id"] == "review_123"
+    service.prepare_contract.assert_called_once_with(
+        contract_path="D:/contracts/contract.pdf",
+        attachments_path="",
+        invoice_path="",
+        platform_basic_info={"contract_no": "HT-1"},
     )
+
+
+def test_specialty_and_report_tools_only_require_review_id() -> None:
+    service = Mock()
+    service.check_contract_seals.return_value = {"seller_seal": {}}
+    service.write_review_report.return_value = {
+        "overall_status": "passed",
+        "markdown_path": "reports/contract_review.md",
+    }
     with patch(
-        "core.application.agent.tools.check_cpseal_services",
-        return_value=result,
+        "core.application.agent.tools.get_contract_review_service",
+        return_value=service,
     ):
-        payload = json.loads(
-            check_cross_page_seal.invoke({"input_path": "D:/contracts/pages"})
+        seal_payload = json.loads(
+            check_contract_seals.invoke({"review_id": "review_123"})
+        )
+        report_payload = json.loads(
+            write_review_report.invoke({"review_id": "review_123"})
         )
 
-    assert payload["status"] == "present"
-    assert payload["page_count"] == 2
+    assert seal_payload == {"seller_seal": {}}
+    assert report_payload["overall_status"] == "passed"
+    service.check_contract_seals.assert_called_once_with("review_123")
+    service.write_review_report.assert_called_once_with("review_123")

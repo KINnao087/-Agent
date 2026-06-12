@@ -1,6 +1,6 @@
 # 科技合同审核系统
 
-该项目使用 LangGraph 编排合同处理流程，使用 LangChain 管理模型、Prompt、工具和结构化输出。
+该项目使用 LangGraph 编排主脑 AI 的工具调用循环，使用 LangChain 管理模型、Prompt、工具和结构化输出。固定的 OCR、字段核对和专项审核由普通应用服务执行。
 
 ## 架构
 
@@ -8,7 +8,8 @@
 core/
   presentation/        CLI 和 FastAPI 入口
   application/
-    workflows/         LangGraph 业务图
+    workflows/         仅保留 CLI Agent 的 LangGraph 对话图
+    reviews/           review_id 审核任务、缓存、专项执行和报告
     contracts/         合同用例服务
     documents/         文档用例服务
     agent/             CLI Agent 和 LangChain Tools
@@ -32,14 +33,20 @@ shared 可被各层使用
 
 `domain` 不依赖 LangChain、LangGraph、FastAPI、OCR 或视觉库。
 
-## 业务图
+## 审核任务
 
-- `documents.py`：加载文档 -> OCR 载荷 -> 结构化解析或线性化输出
-- `basic_info.py`：基础信息提取 -> 平台字段比对 -> 汇总
-- `integrity.py`：加载页面 -> 线性化 -> 印章候选检测 -> 完整性审核 -> 签章审核
-- `cross_page_seal.py`：页面收集 -> 骑缝章片段检测 -> 规则分析 -> 多模态复审
-- `validity.py`：合同主体提取 -> 公开信息搜索 -> 有效性风险审核
-- `chat.py`：模型 -> LangChain ToolNode -> 模型的 CLI Agent 循环
+主脑 AI 只看到业务级工具。`prepare_contract` 根据合同页面、附件、发票和平台数据生成材料指纹，创建或恢复 `review_id`。后续工具通过该编号共享 OCR、线性文本和专项结果：
+
+- `check_basic_info`：基础信息提取和平台字段核对
+- `check_text_integrity`：连续性、完整性、替换页和清晰度
+- `check_contract_seals`：甲乙方普通签章
+- `check_cross_page_seal`：骑缝章
+- `check_contract_authenticity`：主体公开信息和有效性风险
+- `write_review_report`：确定性生成 JSON 和 Markdown 报告
+
+审核任务默认保存在 `artifacts/reviews/<review_id>/`。相同材料优先复用历史任务；模型、Prompt、OCR 或检测算法版本变化时，只失效受影响的专项和下游报告。
+
+`workflows/chat.py` 是 application 层唯一的 LangGraph：模型 -> ToolNode -> 模型。
 
 ## AI 层
 
