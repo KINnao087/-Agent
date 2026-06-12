@@ -286,3 +286,17 @@ def test_cross_page_and_authenticity_steps_use_prepared_context(tmp_path) -> Non
         [Path(manifest.normalized_pages["contract"][0])]
     )
     authenticity_reviewer.assert_called_once()
+
+
+def test_authenticity_reports_basic_info_dependency_failure(tmp_path) -> None:
+    store, manifest = _prepared_review(tmp_path)
+    service = ContractReviewService(
+        store=store,
+        extract_basic_info=Mock(side_effect=RuntimeError("structured AI failed")),
+    )
+
+    result = service.check_contract_authenticity(manifest.review_id)
+
+    assert result["review_status"] == "execution_failed"
+    assert "basic info dependency failed" in result["error"]
+    assert "structured AI failed" in result["error"]

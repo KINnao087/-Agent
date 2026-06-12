@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from core.infrastructure.ai.config import AIConfigRole
 from core.infrastructure.ai.invoke import invoke_structured
 
 
@@ -23,15 +24,20 @@ def test_invoke_structured_uses_langchain_model_and_multimodal_messages(tmp_path
         [("system", "system"), ("human", "{message}")]
     )
 
-    with patch("core.infrastructure.ai.invoke.build_chat_model", return_value=model):
+    with patch("core.infrastructure.ai.invoke.build_chat_model", return_value=model) as build:
         result = invoke_structured(
             prompt,
             DemoResponse,
             {"message": "review"},
             image_paths=[image_path],
+            role=AIConfigRole.VISION,
         )
 
     assert result.ok is True
+    build.assert_called_once_with(
+        role=AIConfigRole.VISION,
+        enable_thinking=False,
+    )
     model.with_structured_output.assert_called_once_with(
         DemoResponse,
         method="function_calling",

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 from typing import Any
 
+from core.infrastructure.ai import AIConfigRole, load_ai_config
 from core.infrastructure.ai.prompts import (
     BASIC_INFO_PROMPT,
     CONTRACT_INTEGRITY_PROMPT,
@@ -29,20 +29,22 @@ def _prompt_fingerprint(prompt: Any) -> str:
     return fingerprint_value([repr(message) for message in prompt.messages])
 
 
-def _model_fingerprint() -> str:
-    config_path = Path(__file__).resolve().parents[3] / "config" / "config.json"
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+def _model_fingerprint(role: AIConfigRole) -> str:
+    config = load_ai_config(role=role)
     return fingerprint_value(
         {
-            "model": config.get("model"),
-            "base_url": (config.get("api") or {}).get("base_url"),
-            "temperature": (config.get("api") or {}).get("temperature"),
+            "role": role.value,
+            "model": config.model,
+            "base_url": config.base_url,
+            "temperature": config.temperature,
         }
     )
 
 
 def build_default_capability_versions() -> dict[str, dict[str, str]]:
-    model = _model_fingerprint()
+    text_model = _model_fingerprint(AIConfigRole.TEXT)
+    vision_model = _model_fingerprint(AIConfigRole.VISION)
+    structured_call = "function-calling-thinking-disabled-v2"
     return {
         "prepare_contract": {
             "normalizer": "document-normalizer-v1",
@@ -50,26 +52,36 @@ def build_default_capability_versions() -> dict[str, dict[str, str]]:
             "linearizer": "contract-linearizer-v1",
         },
         "check_basic_info": {
-            "model": model,
+            "role": AIConfigRole.TEXT.value,
+            "model": text_model,
+            "structured_call": structured_call,
             "prompt": _prompt_fingerprint(BASIC_INFO_PROMPT),
             "compare": "contract-basic-info-compare-v1",
         },
         "check_text_integrity": {
-            "model": model,
+            "role": AIConfigRole.TEXT.value,
+            "model": text_model,
+            "structured_call": structured_call,
             "prompt": _prompt_fingerprint(CONTRACT_INTEGRITY_PROMPT),
         },
         "check_contract_seals": {
-            "model": model,
+            "role": AIConfigRole.VISION.value,
+            "model": vision_model,
+            "structured_call": structured_call,
             "prompt": _prompt_fingerprint(SEAL_REVIEW_PROMPT),
             "detector": "hybrid-seal-detector-v2",
         },
         "check_cross_page_seal": {
-            "model": model,
+            "role": AIConfigRole.VISION.value,
+            "model": vision_model,
+            "structured_call": structured_call,
             "prompt": _prompt_fingerprint(CROSS_PAGE_SEAL_PROMPT),
             "detector": "cross-page-edge-detector-v1",
         },
         "check_contract_authenticity": {
-            "model": model,
+            "role": AIConfigRole.TEXT.value,
+            "model": text_model,
+            "structured_call": structured_call,
             "prompt": _prompt_fingerprint(VALIDITY_REVIEW_PROMPT),
             "search": "tavily-advanced-v1",
         },

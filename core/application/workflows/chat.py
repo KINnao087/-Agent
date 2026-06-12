@@ -5,12 +5,12 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from core.application.agent.tools import TOOLS
-from core.infrastructure.ai import build_chat_model
+from core.infrastructure.ai import AIConfigRole, build_chat_model
 from core.infrastructure.ai.prompts import CLI_AGENT_PROMPT
 
 
 def build_chat_graph():
-    model = build_chat_model().bind_tools(TOOLS)
+    model = build_chat_model(role=AIConfigRole.MAIN).bind_tools(TOOLS)
 
     def call_model(state: MessagesState):
         messages = CLI_AGENT_PROMPT.invoke(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from .config import AIConfigRole
 from .invoke import invoke_structured
 from .prompts import OCR_STRUCTURE_PROMPT
 from .schemas import OCRDocumentResult
@@ -19,5 +20,6 @@ def structure_ocr_json(ocr_payload: dict) -> dict:
             "attachments": json.dumps(ocr_payload["attachments"], ensure_ascii=False),
             "invoice": json.dumps(ocr_payload["invoice"], ensure_ascii=False),
         },
+        role=AIConfigRole.TEXT,
     )
     return result.model_dump()

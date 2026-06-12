@@ -8,6 +8,7 @@ from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
+from .config import AIConfigRole
 from .model import build_chat_model
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -52,8 +53,12 @@ def invoke_text(
     prompt: ChatPromptTemplate,
     values: dict[str, Any],
     image_paths: list[str | Path] | None = None,
+    *,
+    role: AIConfigRole = AIConfigRole.MAIN,
 ) -> str:
-    response = build_chat_model().invoke(_render_messages(prompt, values, image_paths))
+    response = build_chat_model(role=role).invoke(
+        _render_messages(prompt, values, image_paths)
+    )
     return str(response.content)
 
 
@@ -62,10 +67,19 @@ def invoke_structured(
     schema: type[OutputT],
     values: dict[str, Any],
     image_paths: list[str | Path] | None = None,
+    *,
+    role: AIConfigRole,
 ) -> OutputT:
-    model = build_chat_model().with_structured_output(
+    model = build_chat_model(
+        role=role,
+        enable_thinking=False,
+    ).with_structured_output(
         schema,
         method="function_calling",
     )
     response = model.invoke(_render_messages(prompt, values, image_paths))
+    if response is None:
+        raise RuntimeError(
+            f"structured model returned no {schema.__name__} payload"
+        )
     return response if isinstance(response, schema) else schema.model_validate(response)
