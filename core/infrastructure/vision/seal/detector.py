@@ -32,6 +32,7 @@ MIN_BBOX_AREA = 30000
 MAX_BBOX_ASPECT_RATIO = 1.6
 MAX_CANDIDATES_PER_PAGE = 10
 MERGE_GAP = 80
+FALLBACK_CANDIDATE_SCORE = 0.8
 
 
 def find_red_contours(
@@ -139,11 +140,18 @@ def detect_seal_candidates(
     image_path = Path(image_path)
     image = load_image(image_path)
     decision = detect_page_seal(image)
+    detected = decision.candidates
     if not decision.has_seal:
-        return []
+        detected = [
+            candidate
+            for candidate in detected
+            if candidate.score >= FALLBACK_CANDIDATE_SCORE
+        ]
+        if not detected:
+            return []
 
     page_height, page_width = image.shape[:2]
-    detected = decision.candidates or [
+    detected = detected or [
         HybridSealCandidate(
             bbox=[0, 0, page_width, page_height],
             score=decision.score,
