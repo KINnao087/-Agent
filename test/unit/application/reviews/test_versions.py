@@ -27,6 +27,18 @@ def test_default_versions_track_model_prompts_and_algorithms() -> None:
     assert versions["check_cross_page_seal"]["detector"]
     assert versions["check_contract_authenticity"]["prompt"]
     assert versions["write_review_report"]["template"]
+    assert (
+        versions["check_contract_seals"]["detector"]
+        == "hybrid-seal-detector-v3"
+    )
+    assert (
+        versions["check_basic_info"]["structured_call"]
+        == "function-calling-provider-thinking-disabled-v3"
+    )
+    assert (
+        versions["check_contract_seals"]["structured_call"]
+        == "function-calling-thinking-disabled-v2"
+    )
 
 
 def test_default_versions_fingerprint_text_and_vision_models_separately() -> None:

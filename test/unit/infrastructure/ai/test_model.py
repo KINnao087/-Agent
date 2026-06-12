@@ -34,7 +34,7 @@ def test_build_chat_model_leaves_main_agent_thinking_setting_unchanged() -> None
     assert "extra_body" not in chat_openai.call_args.kwargs
 
 
-def test_build_chat_model_does_not_send_qwen_thinking_flag_to_deepseek() -> None:
+def test_build_chat_model_disables_deepseek_thinking_for_structured_tasks() -> None:
     config = AIConfig(
         model="deepseek-pro",
         base_url="https://deepseek.example.com/v1",
@@ -44,7 +44,9 @@ def test_build_chat_model_does_not_send_qwen_thinking_flag_to_deepseek() -> None
     with patch("core.infrastructure.ai.model.ChatOpenAI") as chat_openai:
         build_chat_model(config, enable_thinking=False)
 
-    assert "extra_body" not in chat_openai.call_args.kwargs
+    assert chat_openai.call_args.kwargs["extra_body"] == {
+        "thinking": {"type": "disabled"}
+    }
 
 
 def test_build_chat_model_loads_requested_role() -> None:
