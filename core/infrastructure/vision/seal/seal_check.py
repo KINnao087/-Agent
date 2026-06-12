@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from core.infrastructure.ai import invoke_structured
+from core.infrastructure.ai import AIConfigRole, invoke_structured
 from core.infrastructure.ai.prompts import SEAL_REVIEW_PROMPT
 from core.infrastructure.ai.schemas import SealPageReviewResponse
 from core.infrastructure.text import normalize_document_images
@@ -39,6 +39,7 @@ def check_contract_seals(input_path: str | Path) -> dict[str, str]:
                     "pages_text": "",
                 },
                 image_paths=review_images,
+                role=AIConfigRole.VISION,
             ).model_dump()
         else:
             review = {"candidate_reviews": []}

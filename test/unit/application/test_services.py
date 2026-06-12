@@ -13,6 +13,7 @@ from core.application.workflows.chat import build_chat_graph
 from core.domain.contracts import CPSealResult
 from core.domain.contracts.integrity_models import TextIntegrityReviewResult
 from core.domain.contracts.models import ContractBasicInfo
+from core.infrastructure.ai import AIConfigRole
 
 
 def test_basic_info_service_runs_extract_compare_and_summary() -> None:
@@ -54,10 +55,11 @@ def test_parse_documents_service_passes_loaded_payload_to_structurer() -> None:
 
 
 def test_chat_graph_is_the_only_application_graph() -> None:
-    with patch("core.application.workflows.chat.build_chat_model"):
+    with patch("core.application.workflows.chat.build_chat_model") as build:
         graph = build_chat_graph()
 
     assert {"assistant", "tools"} <= set(graph.get_graph().nodes)
+    build.assert_called_once_with(role=AIConfigRole.MAIN)
 
 
 def test_integrity_service_combines_text_and_optional_seal_results() -> None:

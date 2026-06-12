@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from core.infrastructure.ai import AIConfigRole
 from core.infrastructure.vision.seal.models import SealCandidate
 from core.infrastructure.vision.seal.seal_check import check_contract_seals
 
@@ -43,3 +44,4 @@ def test_contract_seal_review_sends_page_and_top_candidate_crops() -> None:
         Path("candidate-1.png"),
         Path("candidate-2.png"),
     ]
+    assert invoke.call_args.kwargs["role"] is AIConfigRole.VISION

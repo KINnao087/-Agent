@@ -18,7 +18,7 @@ from core.domain.contracts.integrity_models import (
     SealOwner,
     TextIntegrityReviewResult,
 )
-from core.infrastructure.ai import invoke_structured
+from core.infrastructure.ai import AIConfigRole, invoke_structured
 from core.infrastructure.ai.prompts import CONTRACT_INTEGRITY_PROMPT, SEAL_REVIEW_PROMPT
 from core.infrastructure.ai.schemas import (
     IntegrityReviewResponse,
@@ -90,6 +90,7 @@ def review_contract_text_integrity(
         CONTRACT_INTEGRITY_PROMPT,
         IntegrityReviewResponse,
         {"pages_text": _pages_text(page_texts)},
+        role=AIConfigRole.TEXT,
     )
     return _text_integrity_result(response, page_texts)
 
@@ -128,6 +129,7 @@ def _review_page(
             "pages_text": _pages_text(page_texts),
         },
         image_paths=[ordered[0].image_path],
+        role=AIConfigRole.VISION,
     )
     by_index = {item.candidate_index: item for item in response.candidate_reviews}
     return [

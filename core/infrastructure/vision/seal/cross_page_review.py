@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict
 
 from core.domain.contracts import CPSealFragment, CPSealResult
-from core.infrastructure.ai import invoke_structured
+from core.infrastructure.ai import AIConfigRole, invoke_structured
 from core.infrastructure.ai.prompts import CROSS_PAGE_SEAL_PROMPT
 from core.infrastructure.ai.schemas import CrossPageSealReviewResponse
 
@@ -33,6 +33,7 @@ def review_spseal_results(
         CrossPageSealReviewResponse,
         {"payload": json.dumps(payload, ensure_ascii=False, indent=2)},
         image_paths=[fragment.image_path for fragment in fragments],
+        role=AIConfigRole.VISION,
     )
     return CPSealResult(
         status=response.status,

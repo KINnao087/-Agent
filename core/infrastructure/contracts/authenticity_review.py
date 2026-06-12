@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from core.domain.contracts.models import ContractBasicInfo
-from core.infrastructure.ai import invoke_structured
+from core.infrastructure.ai import AIConfigRole, invoke_structured
 from core.infrastructure.ai.prompts import VALIDITY_REVIEW_PROMPT
 from core.infrastructure.ai.schemas import ValidityReviewResponse
 from core.infrastructure.web_searcher.searcher import tavily_search
@@ -46,6 +46,7 @@ def review_contract_authenticity(
             "party_searches": json.dumps(party_searches, ensure_ascii=False, indent=2),
             "contract_text": contract_text[:16000],
         },
+        role=AIConfigRole.TEXT,
     )
     return {
         "basic_info": info.model_dump(),
