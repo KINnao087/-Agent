@@ -674,7 +674,22 @@ class ContractReviewService:
         )
 
     def get_review_status(self, review_id: str) -> dict[str, Any]:
-        manifest = self.store.load(review_id)
+        try:
+            manifest = self.store.load(review_id)
+        except FileNotFoundError:
+            return {
+                "review_id": review_id,
+                "error": True,
+                "error_type": "NotFoundError",
+                "message": f"审核任务不存在: {review_id}",
+            }
+        except Exception as exc:
+            return {
+                "review_id": review_id,
+                "error": True,
+                "error_type": type(exc).__name__,
+                "message": f"加载审核任务失败: {exc}",
+            }
         steps = {}
         for name, record in manifest.steps.items():
             current = is_step_current(
@@ -709,17 +724,53 @@ class ContractReviewService:
         review_id: str,
         step_name: str = "",
     ) -> dict[str, Any]:
-        manifest = self.store.load(review_id)
+        try:
+            manifest = self.store.load(review_id)
+        except FileNotFoundError:
+            return {
+                "review_id": review_id,
+                "error": True,
+                "error_type": "NotFoundError",
+                "message": f"审核任务不存在: {review_id}",
+            }
+        except Exception as exc:
+            return {
+                "review_id": review_id,
+                "error": True,
+                "error_type": type(exc).__name__,
+                "message": f"加载审核任务失败: {exc}",
+            }
         if step_name:
             record = manifest.steps.get(step_name)
             if not record or not record.result_path:
-                raise KeyError(f"review step has no result: {step_name}")
-            return self.store.read_result(review_id, record.result_path)
-        return {
-            name: self.store.read_result(review_id, record.result_path)
-            for name, record in manifest.steps.items()
-            if record.status == "completed" and record.result_path
-        }
+                return {
+                    "review_id": review_id,
+                    "error": True,
+                    "error_type": "KeyError",
+                    "message": f"审核步骤无结果: {step_name}",
+                }
+            try:
+                return self.store.read_result(review_id, record.result_path)
+            except Exception as exc:
+                return {
+                    "review_id": review_id,
+                    "error": True,
+                    "error_type": type(exc).__name__,
+                    "message": f"读取审核结果失败 ({step_name}): {exc}",
+                }
+        try:
+            return {
+                name: self.store.read_result(review_id, record.result_path)
+                for name, record in manifest.steps.items()
+                if record.status == "completed" and record.result_path
+            }
+        except Exception as exc:
+            return {
+                "review_id": review_id,
+                "error": True,
+                "error_type": type(exc).__name__,
+                "message": f"读取审核结果失败: {exc}",
+            }
 
 
 _SERVICE: ContractReviewService | None = None

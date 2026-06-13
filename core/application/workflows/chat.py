@@ -20,7 +20,7 @@ def build_chat_graph():
 
     graph = StateGraph(MessagesState)
     graph.add_node("assistant", call_model)
-    graph.add_node("tools", ToolNode(TOOLS, handle_tool_errors=False))
+    graph.add_node("tools", ToolNode(TOOLS, handle_tool_errors=True))
     graph.add_edge(START, "assistant")
     graph.add_conditional_edges(
         "assistant",

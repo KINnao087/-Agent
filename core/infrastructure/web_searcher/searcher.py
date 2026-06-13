@@ -9,10 +9,15 @@ load_dotenv()
 
 
 def tavily_search(q: str, sdepth: str = "advanced") -> dict:
-    api_key = os.getenv("TAVILY_API_KEY")
-    if not api_key:
-        raise RuntimeError("TAVILY_API_KEY is not configured")
-    return TavilyClient(api_key=api_key).search(
-        query=q,
-        search_depth=sdepth,
-    )
+    try:
+        api_key = os.getenv("TAVILY_API_KEY")
+        if not api_key:
+            raise RuntimeError("TAVILY_API_KEY is not configured")
+        return TavilyClient(api_key=api_key).search(
+            query=q,
+            search_depth=sdepth,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"网络搜索失败 ({q[:50]}...): {type(exc).__name__}: {exc}"
+        ) from exc
