@@ -19,50 +19,73 @@ def ls(
     include_hidden: bool = True,
 ) -> dict[str, Any]:
     """List files and directories under a path."""
-    target = _resolve_path(path)
-    if not target.exists():
-        raise FileNotFoundError(f"path does not exist: {target}")
-    if not target.is_dir():
-        raise NotADirectoryError(f"path is not a directory: {target}")
-
-    entry_iter = target.rglob("*") if recursive else target.iterdir()
-    entries: list[dict[str, Any]] = []
-    skipped = 0
-
-    for entry in sorted(entry_iter, key=lambda item: str(item).lower()):
-        if not include_hidden and entry.name.startswith("."):
-            continue
-        if len(entries) >= max_entries:
-            skipped += 1
-            continue
-
-        try:
-            stat = entry.stat()
-        except OSError:
-            size = None
-            modified = None
-        else:
-            size = stat.st_size
-            modified = stat.st_mtime
-
-        entries.append(
-            {
-                "name": entry.name,
-                "path": str(entry),
-                "relative_path": str(entry.relative_to(target)),
-                "type": "directory" if entry.is_dir() else "file",
-                "size": size,
-                "modified": modified,
+    try:
+        target = _resolve_path(path)
+        if not target.exists():
+            return {
+                "error": True,
+                "error_type": "FileNotFoundError",
+                "message": f"路径不存在: {target}",
+                "path": str(target),
             }
-        )
+        if not target.is_dir():
+            return {
+                "error": True,
+                "error_type": "NotADirectoryError",
+                "message": f"路径不是目录: {target}",
+                "path": str(target),
+            }
 
-    return {
-        "path": str(target),
-        "recursive": recursive,
-        "entries": entries,
-        "entry_count": len(entries),
-        "skipped_count": skipped,
-    }
+        entry_iter = target.rglob("*") if recursive else target.iterdir()
+        entries: list[dict[str, Any]] = []
+        skipped = 0
+
+        for entry in sorted(entry_iter, key=lambda item: str(item).lower()):
+            if not include_hidden and entry.name.startswith("."):
+                continue
+            if len(entries) >= max_entries:
+                skipped += 1
+                continue
+
+            try:
+                stat = entry.stat()
+            except OSError:
+                size = None
+                modified = None
+            else:
+                size = stat.st_size
+                modified = stat.st_mtime
+
+            try:
+                relative = str(entry.relative_to(target))
+            except ValueError:
+                relative = str(entry)
+
+            entries.append(
+                {
+                    "name": entry.name,
+                    "path": str(entry),
+                    "relative_path": relative,
+                    "type": "directory" if entry.is_dir() else "file",
+                    "size": size,
+                    "modified": modified,
+                }
+            )
+
+        return {
+            "path": str(target),
+            "recursive": recursive,
+            "entries": entries,
+            "entry_count": len(entries),
+            "skipped_count": skipped,
+        }
+    except Exception as exc:
+        return {
+            "error": True,
+            "error_type": type(exc).__name__,
+            "message": f"列出目录失败: {exc}",
+            "path": str(path),
+        }
 
 
 def readfile(
@@ -71,26 +94,44 @@ def readfile(
     max_chars: int = 20000,
 ) -> dict[str, Any]:
     """Read a text file and return its content."""
-    target = _resolve_path(path)
-    if not target.exists():
-        raise FileNotFoundError(f"file does not exist: {target}")
-    if not target.is_file():
-        raise IsADirectoryError(f"path is not a file: {target}")
+    try:
+        target = _resolve_path(path)
+        if not target.exists():
+            return {
+                "error": True,
+                "error_type": "FileNotFoundError",
+                "message": f"文件不存在: {target}",
+                "path": str(target),
+            }
+        if not target.is_file():
+            return {
+                "error": True,
+                "error_type": "IsADirectoryError",
+                "message": f"路径不是文件: {target}",
+                "path": str(target),
+            }
 
-    text = target.read_text(encoding=encoding, errors="replace")
-    truncated = len(text) > max_chars
-    if truncated:
-        text = text[:max_chars]
+        text = target.read_text(encoding=encoding, errors="replace")
+        truncated = len(text) > max_chars
+        if truncated:
+            text = text[:max_chars]
 
-    return {
-        "path": str(target),
-        "encoding": encoding,
-        "content": text,
-        "char_count": len(text),
-        "size": target.stat().st_size,
-        "truncated": truncated,
-        "max_chars": max_chars,
-    }
+        return {
+            "path": str(target),
+            "encoding": encoding,
+            "content": text,
+            "char_count": len(text),
+            "size": target.stat().st_size,
+            "truncated": truncated,
+            "max_chars": max_chars,
+        }
+    except Exception as exc:
+        return {
+            "error": True,
+            "error_type": type(exc).__name__,
+            "message": f"读取文件失败: {exc}",
+            "path": str(path),
+        }
 
 
 def readimage(
@@ -99,34 +140,67 @@ def readimage(
     include_data_url: bool = True,
 ) -> dict[str, Any]:
     """Read an image file and return base64-encoded image data."""
-    target = _resolve_path(path)
-    if not target.exists():
-        raise FileNotFoundError(f"image file does not exist: {target}")
-    if not target.is_file():
-        raise IsADirectoryError(f"path is not a file: {target}")
+    try:
+        target = _resolve_path(path)
+        if not target.exists():
+            return {
+                "error": True,
+                "error_type": "FileNotFoundError",
+                "message": f"图片文件不存在: {target}",
+                "path": str(target),
+                "name": target.name,
+            }
+        if not target.is_file():
+            return {
+                "error": True,
+                "error_type": "IsADirectoryError",
+                "message": f"路径不是文件: {target}",
+                "path": str(target),
+                "name": target.name,
+            }
 
-    suffix = target.suffix.lower()
-    supported_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
-    if suffix not in supported_suffixes:
-        raise ValueError(f"unsupported image suffix: {suffix}")
+        suffix = target.suffix.lower()
+        supported_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+        if suffix not in supported_suffixes:
+            return {
+                "error": True,
+                "error_type": "ValueError",
+                "message": f"不支持的图片格式: {suffix}，支持的格式: {', '.join(sorted(supported_suffixes))}",
+                "path": str(target),
+                "name": target.name,
+            }
 
-    size = target.stat().st_size
-    if size > max_bytes:
-        raise ValueError(f"image file is too large: {size} bytes > max_bytes={max_bytes}")
+        size = target.stat().st_size
+        if size > max_bytes:
+            return {
+                "error": True,
+                "error_type": "ValueError",
+                "message": f"图片文件过大: {size} bytes (上限 {max_bytes} bytes)",
+                "path": str(target),
+                "name": target.name,
+                "size": size,
+            }
 
-    image_bytes = target.read_bytes()
-    image_base64 = base64.b64encode(image_bytes).decode("ascii")
-    mime_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-    data_url = f"data:{mime_type};base64,{image_base64}" if include_data_url else ""
+        image_bytes = target.read_bytes()
+        image_base64 = base64.b64encode(image_bytes).decode("ascii")
+        mime_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        data_url = f"data:{mime_type};base64,{image_base64}" if include_data_url else ""
 
-    return {
-        "path": str(target),
-        "name": target.name,
-        "mime_type": mime_type,
-        "size": size,
-        "base64": image_base64,
-        "data_url": data_url,
-    }
+        return {
+            "path": str(target),
+            "name": target.name,
+            "mime_type": mime_type,
+            "size": size,
+            "base64": image_base64,
+            "data_url": data_url,
+        }
+    except Exception as exc:
+        return {
+            "error": True,
+            "error_type": type(exc).__name__,
+            "message": f"读取图片失败: {exc}",
+            "path": str(path),
+        }
 
 
 def writefile(
@@ -137,24 +211,47 @@ def writefile(
     create_parents: bool = True,
 ) -> dict[str, Any]:
     """Write text content to a file."""
-    target = _resolve_path(path)
-    existed_before = target.exists()
-    if existed_before and target.is_dir():
-        raise IsADirectoryError(f"path is a directory: {target}")
-    if existed_before and not overwrite:
-        raise FileExistsError(f"file already exists, pass overwrite=true to replace it: {target}")
+    try:
+        target = _resolve_path(path)
+        existed_before = target.exists()
+        if existed_before and target.is_dir():
+            return {
+                "error": True,
+                "error_type": "IsADirectoryError",
+                "message": f"路径是目录，无法写入: {target}",
+                "path": str(target),
+            }
+        if existed_before and not overwrite:
+            return {
+                "error": True,
+                "error_type": "FileExistsError",
+                "message": f"文件已存在，如需覆盖请设置 overwrite=true: {target}",
+                "path": str(target),
+            }
 
-    if create_parents:
-        target.parent.mkdir(parents=True, exist_ok=True)
-    elif not target.parent.exists():
-        raise FileNotFoundError(f"parent directory does not exist: {target.parent}")
+        if create_parents:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        elif not target.parent.exists():
+            return {
+                "error": True,
+                "error_type": "FileNotFoundError",
+                "message": f"父目录不存在: {target.parent}",
+                "path": str(target),
+            }
 
-    text = "" if content is None else str(content)
-    target.write_text(text, encoding=encoding)
-    return {
-        "path": str(target),
-        "encoding": encoding,
-        "char_count": len(text),
-        "size": target.stat().st_size,
-        "overwritten": existed_before,
-    }
+        text = "" if content is None else str(content)
+        target.write_text(text, encoding=encoding)
+        return {
+            "path": str(target),
+            "encoding": encoding,
+            "char_count": len(text),
+            "size": target.stat().st_size,
+            "overwritten": existed_before,
+        }
+    except Exception as exc:
+        return {
+            "error": True,
+            "error_type": type(exc).__name__,
+            "message": f"写入文件失败: {exc}",
+            "path": str(path),
+        }

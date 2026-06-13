@@ -5,9 +5,14 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
+from typing import Any
 from urllib.parse import unquote, urlparse
 
-from core.application.agent.chat_service import create_cli_chat_service
+from core.application.agent.chat_service import (
+    CliChatService,
+    TraceEvent,
+    create_cli_chat_service,
+)
 from core.shared.logging import get_latest_log_path, get_logger, start_live_log_terminal
 
 TEXTUAL_INSTALL_HINT = (
@@ -35,7 +40,9 @@ def handle_shell_command(args: argparse.Namespace | None = None) -> int:
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, RichLog, Static, Tree
+from textual.widgets.tree import TreeNode
+from rich.text import Text
 
 logger = get_logger("cli_shell")
 
@@ -215,8 +222,6 @@ class PathInput(Input):
 
 class ContractCliShell(App[None]):
     TITLE = "Contract Agent Shell"
-    # chat_service 在 shell 生命周期内复用，保存多轮对话上下文。
-    chat_service = create_cli_chat_service()
     live_log_terminal_started = False
     # SUB_TITLE = "无参数默认进入的 CLI 对话模式"
     CSS = """
@@ -225,9 +230,15 @@ class ContractCliShell(App[None]):
     }
 
     #chat-log {
-        height: 1fr;
+        height: 2fr;
         border: solid $accent;
         padding: 1 2;
+    }
+
+    #trace-tree {
+        height: 1fr;
+        border: solid $secondary;
+        padding: 0 1;
     }
 
     #status {
@@ -243,12 +254,27 @@ class ContractCliShell(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "quit", "退出"),
         Binding("ctrl+l", "clear_chat", "清屏"),
+        Binding("ctrl+t", "toggle_trace", "执行轨迹"),
     ]
 
+    def __init__(
+        self,
+        *args: Any,
+        chat_service: CliChatService | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        # chat_service 在 shell 生命周期内复用，保存多轮对话上下文。
+        self.chat_service = chat_service or create_cli_chat_service()
+        self._trace_turn = 0
+        self._trace_turn_node: TreeNode[None] | None = None
+        self._trace_tool_nodes: dict[str, TreeNode[None]] = {}
+
     def compose(self) -> ComposeResult:
-        # 最小可用布局：聊天记录、状态区、输入框。
+        # 聊天记录与执行轨迹分离，避免调试数据淹没最终回答。
         yield Header(show_clock=True)
         yield RichLog(id="chat-log", wrap=True, markup=False, highlight=False)
+        yield Tree("Agent 执行轨迹", id="trace-tree")
         yield Static("状态: 空闲", id="status")
         yield PathInput(
             placeholder="输入问题，或直接描述要处理的合同文件路径和需求...",
@@ -257,7 +283,11 @@ class ContractCliShell(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._append_system("已进入交互模式。直接输入需求；Ctrl+L 清屏，Ctrl+C 退出。")
+        trace_tree = self.query_one("#trace-tree", Tree)
+        trace_tree.root.expand()
+        self._append_system(
+            "已进入交互模式。Ctrl+T 显隐执行轨迹，Ctrl+L 清屏，Ctrl+C 退出。"
+        )
         self._append_system(
             "例如：请解析 D:/contracts/demo 目录下的合同，并输出结构化 JSON。"
         )
@@ -271,7 +301,16 @@ class ContractCliShell(App[None]):
     def action_clear_chat(self) -> None:
         chat_log = self.query_one(RichLog)
         chat_log.clear()
+        self.query_one("#trace-tree", Tree).clear()
+        self._trace_turn_node = None
+        self._trace_tool_nodes.clear()
         self._append_system("聊天记录已清空。")
+
+    def action_toggle_trace(self) -> None:
+        trace_tree = self.query_one("#trace-tree", Tree)
+        trace_tree.display = not trace_tree.display
+        state = "显示" if trace_tree.display else "隐藏"
+        self._append_system(f"执行轨迹已{state}。")
 
     def _set_status(self, text: str) -> None:
         self.query_one("#status", Static).update(f"状态: {text}")
@@ -284,6 +323,96 @@ class ContractCliShell(App[None]):
 
     def _append_system(self, text: str) -> None:
         self.query_one(RichLog).write(f"SYS> {text}")
+
+    @staticmethod
+    def _trace_label(text: str) -> Text:
+        return Text(text)
+
+    def _current_trace_node(self) -> TreeNode[None]:
+        if self._trace_turn_node is None:
+            tree = self.query_one("#trace-tree", Tree)
+            self._trace_turn += 1
+            self._trace_turn_node = tree.root.add(
+                self._trace_label(f"第 {self._trace_turn} 轮"),
+                expand=True,
+            )
+        return self._trace_turn_node
+
+    def _append_trace_event(self, event: TraceEvent) -> None:
+        if event.kind == "turn_start":
+            tree = self.query_one("#trace-tree", Tree)
+            self._trace_turn += 1
+            self._trace_tool_nodes.clear()
+            self._trace_turn_node = tree.root.add(
+                self._trace_label(f"第 {self._trace_turn} 轮: {event.summary}"),
+                expand=True,
+            )
+            self._trace_turn_node.add_leaf(
+                self._trace_label(f"请求: {event.detail}")
+            )
+            return
+
+        turn_node = self._current_trace_node()
+        if event.kind == "decision":
+            turn_node.add_leaf(self._trace_label(f"决策: {event.summary}"))
+            self._set_status(event.summary)
+            return
+
+        if event.kind == "tool_start":
+            tool_node = turn_node.add(
+                self._trace_label(f"运行中: {event.tool_name}"),
+                expand=False,
+            )
+            tool_node.add_leaf(
+                self._trace_label(f"参数:\n{event.detail or '{}'}")
+            )
+            self._trace_tool_nodes[event.tool_call_id] = tool_node
+            self._set_status(f"正在调用 {event.tool_name}...")
+            return
+
+        if event.kind == "tool_result":
+            tool_node = self._trace_tool_nodes.get(event.tool_call_id)
+            if tool_node is None:
+                tool_node = turn_node.add(
+                    self._trace_label(event.tool_name or "未知工具"),
+                    expand=False,
+                )
+            elapsed = (
+                f"{event.elapsed_ms:.0f} ms"
+                if event.elapsed_ms is not None
+                else "耗时未知"
+            )
+            state = "失败" if event.is_error else "完成"
+            tool_node.set_label(
+                self._trace_label(
+                    f"{state}: {event.tool_name} ({elapsed}) | {event.summary}"
+                )
+            )
+            tool_node.add_leaf(
+                self._trace_label(f"结果:\n{event.detail or event.summary}")
+            )
+            self._set_status(f"{event.tool_name} {state}")
+            return
+
+        if event.kind == "final":
+            final_node = turn_node.add(
+                self._trace_label("最终回答已生成"),
+                expand=False,
+            )
+            final_node.add_leaf(
+                self._trace_label(event.detail or event.summary)
+            )
+            self._set_status("正在输出最终回答...")
+            return
+
+        if event.kind == "error":
+            error_node = turn_node.add(
+                self._trace_label(f"执行失败: {event.summary}"),
+                expand=False,
+            )
+            error_node.add_leaf(
+                self._trace_label(event.detail or event.summary)
+            )
 
     def _reset_input(self) -> None:
         prompt = self.query_one(Input)
@@ -315,15 +444,26 @@ class ContractCliShell(App[None]):
     @work(thread=True, exclusive=True)
     def run_chat_turn(self, message: str) -> None:
         # 模型调用放到后台线程，避免 Textual 主线程卡住。
+        reply = ""
+        failure = ""
         try:
-            reply = self.chat_service.ask(message)
+            for trace_event in self.chat_service.stream(message):
+                self.call_from_thread(self._append_trace_event, trace_event)
+                if trace_event.kind == "final":
+                    reply = trace_event.detail
+                elif trace_event.kind == "error":
+                    failure = trace_event.detail or trace_event.summary
         except Exception as exc:
-            self.call_from_thread(self._append_system, f"处理失败: {exc}")
-        else:
+            failure = str(exc)
+
+        if reply:
             self.call_from_thread(self._append_assistant, format_paths_for_display(reply))
-        finally:
-            self.call_from_thread(self._set_status, "空闲")
-            self.call_from_thread(self._reset_input)
+        elif failure:
+            self.call_from_thread(self._append_system, f"处理失败: {failure}")
+        else:
+            self.call_from_thread(self._append_system, "处理失败: Agent 未返回最终回答")
+        self.call_from_thread(self._set_status, "空闲")
+        self.call_from_thread(self._reset_input)
 
 def run_cli_shell() -> int:
     """启动 Textual 交互式 CLI shell。"""

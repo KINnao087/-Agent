@@ -56,10 +56,15 @@ def invoke_text(
     *,
     role: AIConfigRole = AIConfigRole.MAIN,
 ) -> str:
-    response = build_chat_model(role=role).invoke(
-        _render_messages(prompt, values, image_paths)
-    )
-    return str(response.content)
+    try:
+        response = build_chat_model(role=role).invoke(
+            _render_messages(prompt, values, image_paths)
+        )
+        return str(response.content)
+    except Exception as exc:
+        raise RuntimeError(
+            f"AI 模型调用失败 (role={role.value}): {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def invoke_structured(
@@ -70,16 +75,21 @@ def invoke_structured(
     *,
     role: AIConfigRole,
 ) -> OutputT:
-    model = build_chat_model(
-        role=role,
-        enable_thinking=False,
-    ).with_structured_output(
-        schema,
-        method="function_calling",
-    )
-    response = model.invoke(_render_messages(prompt, values, image_paths))
-    if response is None:
-        raise RuntimeError(
-            f"structured model returned no {schema.__name__} payload"
+    try:
+        model = build_chat_model(
+            role=role,
+            enable_thinking=False,
+        ).with_structured_output(
+            schema,
+            method="function_calling",
         )
-    return response if isinstance(response, schema) else schema.model_validate(response)
+        response = model.invoke(_render_messages(prompt, values, image_paths))
+        if response is None:
+            raise RuntimeError(
+                f"structured model returned no {schema.__name__} payload"
+            )
+        return response if isinstance(response, schema) else schema.model_validate(response)
+    except Exception as exc:
+        raise RuntimeError(
+            f"AI 结构化调用失败 (role={role.value}, schema={schema.__name__}): {type(exc).__name__}: {exc}"
+        ) from exc
