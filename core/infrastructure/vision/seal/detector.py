@@ -172,9 +172,9 @@ def detect_seal_candidates(
         enhanced_crop_path = OUTPUT_DIR / f"{image_path.stem}_page{page_index}_candidate{index}_enhanced.png"
 
         if not cv2.imwrite(str(crop_path), crop):
-            raise ValueError(f"failed to write crop image: {crop_path}")
+            raise RuntimeError(f"保存裁剪图片失败 (cv2.imwrite 返回 False): {crop_path}")
         if not cv2.imwrite(str(enhanced_crop_path), enhanced_crop):
-            raise ValueError(f"failed to write enhanced crop image: {enhanced_crop_path}")
+            raise RuntimeError(f"保存增强图片失败 (cv2.imwrite 返回 False): {enhanced_crop_path}")
 
         candidates.append(
             SealCandidate(

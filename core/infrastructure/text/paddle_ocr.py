@@ -21,20 +21,25 @@ def _install_paddlex_langchain_compatibility() -> None:
 
 
 def create_paddle_ocr(device: str = "gpu") -> Any:
-    os.environ["FLAGS_use_mkldnn"] = "0"
-    os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
-    _install_paddlex_langchain_compatibility()
+    try:
+        os.environ["FLAGS_use_mkldnn"] = "0"
+        os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+        _install_paddlex_langchain_compatibility()
 
-    from paddleocr import PaddleOCR
+        from paddleocr import PaddleOCR
 
-    return PaddleOCR(
-        lang="ch",
-        device=device,
-        enable_mkldnn=False,
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False,
-    )
+        return PaddleOCR(
+            lang="ch",
+            device=device,
+            enable_mkldnn=False,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"PaddleOCR 初始化失败 (device={device}): {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 def get_paddle_ocr(device: str = "gpu") -> Any:
@@ -56,17 +61,22 @@ def clear_paddle_ocr_cache() -> None:
 
 
 def predict_ocr_image(ocr: Any, image_path: str) -> dict:
-    results = list(ocr.predict(image_path))
-    if not results:
-        return {
-            "input_path": image_path,
-            "rec_texts": [],
-            "rec_boxes": [],
-            "rec_scores": [],
-        }
+    try:
+        results = list(ocr.predict(image_path))
+        if not results:
+            return {
+                "input_path": image_path,
+                "rec_texts": [],
+                "rec_boxes": [],
+                "rec_scores": [],
+            }
 
-    result = dict(results[0].json)
-    if isinstance(result.get("res"), dict):
-        result = dict(result["res"])
-    result["input_path"] = image_path
-    return result
+        result = dict(results[0].json)
+        if isinstance(result.get("res"), dict):
+            result = dict(result["res"])
+        result["input_path"] = image_path
+        return result
+    except Exception as exc:
+        raise RuntimeError(
+            f"OCR 识别失败 ({image_path}): {type(exc).__name__}: {exc}"
+        ) from exc

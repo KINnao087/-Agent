@@ -342,8 +342,17 @@ def extract_page_features(
 
 @lru_cache(maxsize=1)
 def load_hybrid_model(model_path: str | Path = MODEL_PATH) -> HybridSealModel:
-    payload = json.loads(Path(model_path).read_text(encoding="utf-8"))
-    return HybridSealModel.from_dict(payload)
+    try:
+        payload = json.loads(Path(model_path).read_text(encoding="utf-8"))
+        return HybridSealModel.from_dict(payload)
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"混合检测模型文件不存在: {model_path}"
+        ) from None
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        raise RuntimeError(
+            f"混合检测模型文件损坏或格式错误: {model_path}: {exc}"
+        ) from exc
 
 
 def detect_page_seal(
