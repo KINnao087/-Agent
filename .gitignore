@@ -37,10 +37,10 @@ Log/
 .env.*
 
 # Local test data and generated OCR outputs
-test/output/
-test/testfiles/
-test/test.png
-test/seals
+python-agent/test/output/
+python-agent/test/testfiles/
+python-agent/test/test.png
+python-agent/test/seals/
 artifacts/
 
 # OS files
