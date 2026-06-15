@@ -48,3 +48,17 @@ artifacts/
 Thumbs.db
 
 diary
+
+# ---- Java / Maven ----
+target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.log
+
+# ---- Node / Vue ----
+node_modules/
+.vite/
+*.local
