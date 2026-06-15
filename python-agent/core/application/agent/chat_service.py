@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -93,6 +94,7 @@ def _tool_result(content: Any) -> tuple[str, str, bool]:
 class CliChatService:
     graph: CompiledStateGraph
     thread_id: str
+    cancel_event: threading.Event | None = None
 
     def stream(self, message: str) -> Iterator[TraceEvent]:
         """Stream an auditable execution trace and the final answer."""
@@ -109,6 +111,14 @@ class CliChatService:
                 stream_mode="updates",
             )
             for update in updates:
+                if self.cancel_event and self.cancel_event.is_set():
+                    yield TraceEvent(
+                        kind="error",
+                        summary="审核任务已被取消",
+                        detail="客户端请求取消审核",
+                        is_error=True,
+                    )
+                    return
                 if not isinstance(update, dict):
                     continue
                 for node, payload in update.items():

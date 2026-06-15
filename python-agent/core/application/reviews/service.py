@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextvars
 import json
 import hashlib
 import shutil
+import threading
 from dataclasses import asdict
 from collections.abc import Callable
 from pathlib import Path
@@ -167,6 +169,7 @@ class ContractReviewService:
         review_cross_page_seal: Callable[..., Any] = review_cross_page_seal_images,
         review_authenticity: Callable[..., dict[str, Any]] = review_contract_authenticity,
         versions: dict[str, dict[str, str]] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         self.store = store or FileReviewStore()
         self.normalize_images = normalize_images
@@ -178,6 +181,15 @@ class ContractReviewService:
         self.review_cross_page_seal = review_cross_page_seal
         self.review_authenticity = review_authenticity
         self.versions = versions or {}
+        self._cancel_event = cancel_event
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancel_event is not None and self._cancel_event.is_set()
+
+    def _check_cancelled(self) -> None:
+        if self.is_cancelled:
+            raise RuntimeError("审核任务已被取消")
 
     def _versions_for(self, step_name: str) -> dict[str, str]:
         return self.versions.get(step_name, {})
@@ -423,6 +435,7 @@ class ContractReviewService:
         operation: ReviewOperation,
         required_versions: dict[str, str] | None = None,
     ) -> dict[str, Any]:
+        self._check_cancelled()
         manifest = self.store.load(review_id)
         versions = (
             required_versions
@@ -773,15 +786,25 @@ class ContractReviewService:
             }
 
 
-_SERVICE: ContractReviewService | None = None
+_current_service: contextvars.ContextVar[ContractReviewService | None] = (
+    contextvars.ContextVar("contract_review_service", default=None)
+)
+
+
+def set_contract_review_service(service: ContractReviewService) -> None:
+    """为当前请求上下文设置服务实例（API 层调用）。"""
+    _current_service.set(service)
 
 
 def get_contract_review_service() -> ContractReviewService:
-    global _SERVICE
-    if _SERVICE is None:
-        from .versions import build_default_capability_versions
+    """获取当前上下文的审核服务实例。
 
-        _SERVICE = ContractReviewService(
-            versions=build_default_capability_versions()
-        )
-    return _SERVICE
+    API 请求中返回请求级实例（支持取消隔离）；
+    CLI 等非 Web 场景回退到默认实例。
+    """
+    svc = _current_service.get()
+    if svc is not None:
+        return svc
+    from .versions import build_default_capability_versions
+
+    return ContractReviewService(versions=build_default_capability_versions())
