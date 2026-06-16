@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  # ── MySQL ──
+  mysql:
+    image: mysql:8.0
+    container_name: contract-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-zjj2005225}
+      MYSQL_DATABASE: contract_review
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Python AI 服务 ──
+  python-ai:
+    build: ./python-agent
+    container_name: contract-python
+    environment:
+      MAIN_AI_API_KEY: ${MAIN_AI_API_KEY}
+      MAIN_AI_BASE_URL: ${MAIN_AI_BASE_URL}
+      MAIN_AI_MODEL: ${MAIN_AI_MODEL}
+      TEXT_AI_API_KEY: ${TEXT_AI_API_KEY}
+      TEXT_AI_BASE_URL: ${TEXT_AI_BASE_URL}
+      TEXT_AI_MODEL: ${TEXT_AI_MODEL}
+      VISION_AI_API_KEY: ${VISION_AI_API_KEY}
+      VISION_AI_BASE_URL: ${VISION_AI_BASE_URL}
+      VISION_AI_MODEL: ${VISION_AI_MODEL}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./python-agent/artifacts:/app/artifacts
+      - ./python-agent/data:/app/data
+      - ./python-agent/models:/app/models
+      - ./python-agent/config:/app/config
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # ── Java Spring Boot ──
+  java-backend:
+    build: ./java-backend
+    container_name: contract-java
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zjj2005225}
+      PYTHON_HOST: python-ai
+      PYTHON_PORT: 8000
+    ports:
+      - "8080:8080"
+    volumes:
+      - java_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      python-ai:
+        condition: service_started
+
+volumes:
+  mysql_data:
+  java_uploads:
