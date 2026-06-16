@@ -16,8 +16,10 @@ export const contractsApi = {
   get(id: number) {
     return client.get<ContractItem>(`/contracts/${id}`)
   },
-  create(title: string, filePath: string) {
-    return client.post<ContractItem>('/contracts', { title, filePath })
+  create(formData: FormData) {
+    return client.post<ContractItem>('/contracts', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
   },
   startReview(id: number) {
     return client.post(`/contracts/${id}/review`)

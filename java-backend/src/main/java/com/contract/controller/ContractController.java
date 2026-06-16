@@ -21,12 +21,20 @@ public class ContractController {
 
     private final ContractService contractService;
 
+//    @PostMapping
+//    public ResponseEntity<ContractResponse> create(
+//            Authentication auth,
+//            @Valid @RequestBody ContractUploadRequest request) {
+//        Long userId = Long.parseLong(auth.getName());
+//        return ResponseEntity.ok(contractService.createContract(userId, request));
+//    }
     @PostMapping
     public ResponseEntity<ContractResponse> create(
             Authentication auth,
-            @Valid @RequestBody ContractUploadRequest request) {
-        Long userId = Long.parseLong(auth.getName());
-        return ResponseEntity.ok(contractService.createContract(userId, request));
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("title") String title
+    ) throws IOExpection {
+        Long UserID = Long.parseLong(auth.getName());
     }
 
     @GetMapping

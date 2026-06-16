@@ -44,11 +44,27 @@ python-agent/test/test.png
 python-agent/test/seals/
 artifacts/
 
+# MS Office temp files (Word lock files)
+~$*.doc*
+~$*.xls*
+~$*.ppt*
+
+# Office documents — should not be tracked in git
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+
 # OS files
 .DS_Store
 Thumbs.db
 
 diary
+
+# ChromaDB local vector database
+python-agent/data/knowledge/db/
 
 # ---- Java / Maven ----
 target/

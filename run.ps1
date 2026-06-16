@@ -24,7 +24,7 @@ Write-Host ""
 
 # 2. Python FastAPI
 Write-Host "[2/4] Starting Python AI (port 8000)..." -ForegroundColor Yellow
-$pythonJob = Start-Process -FilePath "cmd.exe" -ArgumentList "/k", "cd /d `"$ROOT\python-agent`" && .venv\Scripts\python.exe -m uvicorn server:app --port 8000 --reload" -WindowStyle Normal
+$pythonJob = Start-Process -FilePath "cmd.exe" -ArgumentList "/k", "cd /d `"$ROOT\python-agent`" && .venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload" -WindowStyle Normal
 Write-Host "  [OK] Python AI started" -ForegroundColor Green
 Write-Host ""
 
@@ -36,7 +36,7 @@ Write-Host ""
 
 # 4. Vue Frontend
 Write-Host "[4/4] Starting Vue frontend (port 5173)..." -ForegroundColor Yellow
-$vueJob = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cd /d `"$ROOT\vue-frontend`" && npm run dev" -WindowStyle Normal
+$vueJob = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cd /d `"$ROOT\vue-frontend`" && npm run dev -- --host 0.0.0.0 " -WindowStyle Normal
 Write-Host "  [OK] Vue started" -ForegroundColor Green
 Write-Host ""
 
