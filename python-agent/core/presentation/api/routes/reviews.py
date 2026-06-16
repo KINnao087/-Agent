@@ -6,7 +6,7 @@ import threading
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from core.application.agent.chat_service import CliChatService, TraceEvent
 from core.application.reviews import (
@@ -83,11 +83,33 @@ def _make_service(cancel_event: threading.Event | None = None) -> ContractReview
 
 @router.post("")
 async def create_review(payload: dict[str, Any]) -> dict[str, Any]:
-    """创建审核任务。"""
-    contract_path = payload.get("contract_path", "")
+    """创建审核任务 — 执行 prepare_contract 并返回 review_id。"""
+    contract_path = str(payload.get("contract_path", ""))
     if not contract_path:
         raise HTTPException(status_code=400, detail="缺少 contract_path")
-    return {}
+
+    platform_info = payload.get("platform_basic_info")
+    if not platform_info or not isinstance(platform_info, dict):
+        platform_info = None
+
+    _logger.info("收到审核请求: contract_path={}", contract_path)
+
+    service = _make_service()
+    set_contract_review_service(service)
+    try:
+        result = service.prepare_contract(
+            contract_path=contract_path,
+            attachments_path=str(payload.get("attachments_path", "")),
+            invoice_path=str(payload.get("invoice_path", "")),
+            platform_basic_info=platform_info,
+        )
+        _logger.info("审核任务创建成功: {}", result["review_id"])
+        return {"review_id": result["review_id"], "cached": result.get("cached", False)}
+    except Exception as exc:
+        _logger.error("创建审核任务失败: {}", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        set_contract_review_service(None)  # type: ignore[arg-type]
 
 
 @router.get("/{review_id}/stream")
@@ -198,13 +220,26 @@ async def get_review_status(review_id: str) -> dict[str, Any]:
 
 @router.get("/{review_id}/report")
 async def get_review_report(review_id: str) -> dict[str, Any]:
-    """获取审核报告。"""
+    """获取审核报告 JSON。"""
     service = _make_service()
     set_contract_review_service(service)
     try:
         return service.get_review_result(review_id)
     finally:
         set_contract_review_service(None)  # type: ignore[arg-type]
+
+
+@router.get("/{review_id}/report/markdown")
+async def get_review_report_markdown(review_id: str) -> PlainTextResponse:
+    """获取审核报告 Markdown 原文。"""
+    service = _make_service()
+    md_path = service.store.review_dir(review_id) / "reports" / "contract_review.md"
+    if not md_path.exists():
+        raise HTTPException(status_code=404, detail="Markdown 报告尚未生成")
+    return PlainTextResponse(
+        md_path.read_text(encoding="utf-8"),
+        media_type="text/markdown",
+    )
 
 
 @router.delete("/{review_id}")

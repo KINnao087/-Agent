@@ -35,6 +35,7 @@ pip-wheel-metadata/
 Log/
 .env
 .env.*
+!.env.example
 
 # Local test data and generated OCR outputs
 python-agent/test/output/

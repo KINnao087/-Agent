@@ -1,0 +1,9 @@
+.venv
+__pycache__
+.venv/
+artifacts
+Log
+.pytest_cache
+*.pyc
+.idea
+.vscode
