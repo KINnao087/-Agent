@@ -9,8 +9,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -33,8 +38,24 @@ public class ContractController {
             Authentication auth,
             @RequestParam("file") MultipartFile file,
             @RequestParam("title") String title
-    ) throws IOExpection {
-        Long UserID = Long.parseLong(auth.getName());
+    ) throws IOException {
+        Long userId = Long.parseLong(auth.getName());
+
+        // 把文件保存到本地服务器（绝对路径）
+        Path uploadDir = Path.of(System.getProperty("user.dir"), "uploads", "contracts");
+        Files.createDirectories(uploadDir);
+
+        String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+        Path savePath = uploadDir.resolve(fileName);
+
+        file.transferTo(savePath.toFile());
+
+        ContractUploadRequest req = new ContractUploadRequest(
+            title,
+            savePath.toString(),
+            null, null
+        );
+        return ResponseEntity.ok(contractService.createContract(userId, req));
     }
 
     @GetMapping

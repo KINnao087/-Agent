@@ -17,9 +17,8 @@ export const contractsApi = {
     return client.get<ContractItem>(`/contracts/${id}`)
   },
   create(formData: FormData) {
-    return client.post<ContractItem>('/contracts', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    // 不要手动设置 Content-Type，浏览器/axios 会自动带上 boundary
+    return client.post<ContractItem>('/contracts', formData)
   },
   startReview(id: number) {
     return client.post(`/contracts/${id}/review`)

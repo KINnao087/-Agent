@@ -5,5 +5,5 @@ import jakarta.validation.constraints.NotBlank;
 public record ContractUploadRequest(
         @NotBlank String title,
         String filePath,
-        String attachmentsPath,
-        String invoicePath) {}
+        String attachmentsPath,  // 附件路径
+        String invoicePath) {}   // 发票路径
