@@ -120,6 +120,20 @@ public class ContractService {
         return pythonClient.getReviewMarkdown(contract.getReviewId());
     }
 
+    /**
+     * 更新合同审核状态（前端调用来推进状态流转）。
+     */
+    public ContractResponse updateStatus(Long userId, Long contractId, String newStatus) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("合同不存在"));
+        if (!contract.getUser().getId().equals(userId)) {
+            throw new RuntimeException("无权访问");
+        }
+        contract.setStatus(Contract.ReviewStatus.valueOf(newStatus));
+        contract = contractRepository.save(contract);
+        return ContractResponse.from(contract);
+    }
+
     public void cancelReview(Long userId, Long contractId) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new RuntimeException("合同不存在"));

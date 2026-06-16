@@ -29,6 +29,9 @@ export const contractsApi = {
   getReportMarkdown(id: number) {
     return client.get<string>(`/contracts/${id}/report/markdown`, { responseType: 'text' })
   },
+  updateStatus(id: number, status: string) {
+    return client.patch<ContractItem>(`/contracts/${id}/status`, { status })
+  },
   cancelReview(id: number) {
     return client.delete(`/contracts/${id}/review`)
   },

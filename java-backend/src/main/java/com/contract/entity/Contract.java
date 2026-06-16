@@ -40,7 +40,7 @@ public class Contract {
     private LocalDateTime updatedAt;
 
     public enum ReviewStatus {
-        pending, reviewing, completed, failed
+        pending, reviewing, pending_review, completed, failed
     }
 
     @PrePersist

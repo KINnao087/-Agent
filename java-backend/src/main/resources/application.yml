@@ -35,4 +35,3 @@ python:
 logging:
   level:
     com.contract: DEBUG
-    org.springframework.security: DEBUG

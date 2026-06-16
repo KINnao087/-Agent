@@ -112,6 +112,19 @@ public class ContractController {
         return ResponseEntity.ok(contractService.getReportMarkdown(userId, id));
     }
 
+    /**
+     * 更新合同审核状态（前端推进流转：pending → reviewing → pending_review → completed）。
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ContractResponse> updateStatus(
+            Authentication auth,
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        Long userId = Long.parseLong(auth.getName());
+        String status = body.get("status");
+        return ResponseEntity.ok(contractService.updateStatus(userId, id, status));
+    }
+
     @DeleteMapping("/{id}/review")
     public ResponseEntity<Map<String, String>> cancel(
             Authentication auth, @PathVariable Long id) {

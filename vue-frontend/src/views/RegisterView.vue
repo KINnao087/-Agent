@@ -31,7 +31,7 @@ async function handleRegister() {
   <div class="auth-page">
     <div class="auth-card card">
       <h2>注册</h2>
-      <div v-if="error" style="color:#f56c6c;margin-bottom:12px">{{ error }}</div>
+      <div v-if="error" class="error-msg">{{ error }}</div>
       <form @submit.prevent="handleRegister">
         <div class="form-group"><label>用户名</label><input v-model="username" required /></div>
         <div class="form-group"><label>邮箱</label><input v-model="email" type="email" required /></div>
@@ -41,7 +41,7 @@ async function handleRegister() {
           {{ loading ? '注册中...' : '注册' }}
         </button>
       </form>
-      <p style="text-align:center;margin-top:16px">
+      <p class="auth-footer">
         已有账号？<router-link to="/login">登录</router-link>
       </p>
     </div>

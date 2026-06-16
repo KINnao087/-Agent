@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import traceback
+from pathlib import Path
 from typing import Any
 
 from langchain.tools import ToolRuntime
@@ -158,7 +159,20 @@ def list_files(
     recursive: bool = False,
     max_entries: int = 200,
 ) -> str:
-    """列出本机目录中的文件和子目录。"""
+    """列出指定目录中的文件和子目录。仅限在审核产物和上传目录范围内使用。"""
+    # 限制可访问的根目录，防止 AI 浏览项目源码和测试文件
+    allowed_roots = [
+        str((Path(__file__).parent.parent.parent.parent.parent / "artifacts").resolve()),
+        str((Path(__file__).parent.parent.parent.parent.parent / "data").resolve()),
+        str(Path("uploads").resolve()),
+    ]
+    resolved = str(Path(path).expanduser().resolve())
+    if not any(resolved.startswith(root) for root in allowed_roots):
+        return json.dumps({
+            "error": True,
+            "error_type": "PermissionError",
+            "message": f"无权访问此目录: {path}。仅限 artifacts、data、uploads 目录。",
+        }, ensure_ascii=False)
     return _safe_json(sys_ls, path=path, recursive=recursive, max_entries=max_entries)
 
 

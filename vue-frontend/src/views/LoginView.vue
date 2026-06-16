@@ -28,7 +28,7 @@ async function handleLogin() {
   <div class="auth-page">
     <div class="auth-card card">
       <h2>登录</h2>
-      <div v-if="error" style="color:#f56c6c;margin-bottom:12px">{{ error }}</div>
+      <div v-if="error" class="error-msg">{{ error }}</div>
       <form @submit.prevent="handleLogin">
         <div class="form-group">
           <label>邮箱</label>
@@ -42,7 +42,7 @@ async function handleLogin() {
           {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
-      <p style="text-align:center;margin-top:16px">
+      <p class="auth-footer">
         没有账号？<router-link to="/register">注册</router-link>
       </p>
     </div>
