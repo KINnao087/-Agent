@@ -42,6 +42,9 @@ python-agent/test/output/
 python-agent/test/testfiles/
 python-agent/test/test.png
 python-agent/test/seals/
+test/seals/
+test/seal/
+java-backend/uploads/
 artifacts/
 
 # MS Office temp files (Word lock files)
@@ -74,6 +77,9 @@ target/
 *.nar
 *.ear
 *.log
+
+# Java backend uploads — user files, not source code
+java-backend/uploads/
 
 # ---- Node / Vue ----
 node_modules/

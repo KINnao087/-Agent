@@ -6,6 +6,16 @@ import { useRouter, useRoute } from 'vue-router'
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
+let authExpiryInterval: ReturnType<typeof setInterval> | null = null
+
+function enforceTokenExpiry() {
+  if (auth.token && auth.isTokenExpired(auth.token)) {
+    auth.logout()
+    if (route.path !== '/login') {
+      router.replace('/login')
+    }
+  }
+}
 
 // ===== 主题管理 =====
 const isDark = ref(false)
@@ -33,6 +43,24 @@ function toggleTheme() {
 }
 
 onMounted(initTheme)
+onMounted(() => {
+  enforceTokenExpiry()
+  authExpiryInterval = setInterval(enforceTokenExpiry, 1000)
+  window.addEventListener('focus', enforceTokenExpiry)
+  window.addEventListener('pointerdown', enforceTokenExpiry)
+  window.addEventListener('keydown', enforceTokenExpiry)
+  document.addEventListener('visibilitychange', enforceTokenExpiry)
+})
+onUnmounted(() => {
+  if (authExpiryInterval) {
+    clearInterval(authExpiryInterval)
+    authExpiryInterval = null
+  }
+  window.removeEventListener('focus', enforceTokenExpiry)
+  window.removeEventListener('pointerdown', enforceTokenExpiry)
+  window.removeEventListener('keydown', enforceTokenExpiry)
+  document.removeEventListener('visibilitychange', enforceTokenExpiry)
+})
 
 // ===== 设置弹窗 =====
 const showSettings = ref(false)

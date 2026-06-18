@@ -8,6 +8,12 @@ const client = axios.create({
 
 client.interceptors.request.use((config) => {
   const auth = useAuthStore()
+  if (auth.token && auth.isTokenExpired(auth.token)) {
+    auth.logout()
+    window.location.href = '/login'
+    return Promise.reject(new Error('Token expired'))
+  }
+
   if (auth.token) {
     config.headers.Authorization = `Bearer ${auth.token}`
   }
@@ -17,7 +23,7 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 || err.response?.status === 403) {
       const auth = useAuthStore()
       auth.logout()
       window.location.href = '/login'

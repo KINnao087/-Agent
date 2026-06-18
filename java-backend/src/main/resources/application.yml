@@ -25,6 +25,7 @@ spring:
 app:
   jwt:
     secret: Y29udHJhY3QtcmV2aWV3LXBsYXRmb3JtLWp3dC1zZWNyZXQta2V5LTIwMjU=
+#    expiration-ms: 3000
     expiration-ms: 86400000  # 24 小时
 
 # Python AI 服务地址
