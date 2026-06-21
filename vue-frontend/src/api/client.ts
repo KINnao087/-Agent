@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { extractApiErrorCode, extractApiErrorMessage, isAuthRequest, shouldForceLogout } from './errors'
 import { useAuthStore } from '@/stores/auth'
 import { appendDiagnosticLog } from '@/utils/diagnostics'
 
@@ -32,19 +33,25 @@ client.interceptors.response.use(
   (err) => {
     const details = {
       status: err.response?.status ?? null,
+      code: extractApiErrorCode(err),
       method: err.config?.method ?? null,
       url: err.config?.url ?? null,
       baseURL: err.config?.baseURL ?? null,
-      message: err.message ?? null,
+      message: extractApiErrorMessage(err, err.message ?? 'Request failed'),
       data: err.response?.data ?? null,
     }
 
-    if (err.response?.status === 401) {
+    if (shouldForceLogout(err) && !isAuthRequest(err)) {
       console.error('API 401 -> logout', details)
       appendDiagnosticLog('error', 'api.client', 'api_401', details)
       const auth = useAuthStore()
       auth.logout('api_401', details)
-      window.location.href = '/login'
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    } else if (err.response?.status === 401) {
+      console.warn('API 401 ignored for logout', details)
+      appendDiagnosticLog('warn', 'api.client', 'api_401_ignored', details)
     } else {
       console.warn('API error', details)
       appendDiagnosticLog('warn', 'api.client', 'api_error', details)

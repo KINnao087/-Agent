@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { extractApiErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { contractsApi, type ContractItem } from '@/api/contracts'
 import ExecutionTree from '@/components/ExecutionTree.vue'
@@ -152,7 +153,7 @@ async function startReview() {
     contract.value.status = 'reviewing'
     connectStream()
   } catch (e: any) {
-    error.value = '发起审核失败: ' + (e.response?.data?.message || e.message)
+    error.value = '发起审核失败: ' + extractApiErrorMessage(e, '请求失败')
   }
 }
 
@@ -163,7 +164,7 @@ async function approveReview() {
     await contractsApi.updateStatus(contract.value.id, 'completed')
     contract.value.status = 'completed'
   } catch (e: any) {
-    error.value = '操作失败: ' + (e.response?.data?.message || e.message)
+    error.value = '操作失败: ' + extractApiErrorMessage(e, '请求失败')
   } finally {
     approving.value = false
   }

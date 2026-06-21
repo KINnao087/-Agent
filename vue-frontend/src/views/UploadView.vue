@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { extractApiErrorMessage } from '@/api/errors'
 import { contractsApi } from '@/api/contracts'
 
 const router = useRouter()
@@ -85,7 +86,7 @@ async function handleUpload() {
     const res = await contractsApi.create(formData)
     router.push('/contracts/' + res.data.id + '/review')
   } catch (e: any) {
-    error.value = e.response?.data?.message || '创建失败'
+    error.value = extractApiErrorMessage(e, '创建失败')
   } finally {
     loading.value = false
   }

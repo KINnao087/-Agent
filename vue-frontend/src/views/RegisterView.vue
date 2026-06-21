@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { extractApiErrorMessage } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -20,7 +21,7 @@ async function handleRegister() {
     await auth.register(username.value, email.value, password.value)
     router.push('/dashboard')
   } catch (e: any) {
-    error.value = e.response?.data?.message || '注册失败'
+    error.value = extractApiErrorMessage(e, '注册失败')
   } finally {
     loading.value = false
   }

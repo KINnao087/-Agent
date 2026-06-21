@@ -4,13 +4,14 @@ import asyncio
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from core.application.reviews import (
     ContractReviewService,
     set_contract_review_service,
 )
+from core.presentation.api.errors import api_error
 from core.presentation.api.review_runtime import (
     TERMINAL_EVENT_KINDS,
     ReviewEventStore,
@@ -29,13 +30,15 @@ def _build_review_prompt(
     platform_basic_info: dict[str, Any] | None = None,
 ) -> str:
     parts = [
-        "请对以下合同执行完整的 AI 审核流程：",
-        f"1. find_contract_review: contract_path={contract_path!r}"
-        f"{', attachments_path=' + repr(attachments_path) if attachments_path else ''}"
-        f"{', invoice_path=' + repr(invoice_path) if invoice_path else ''}"
-        f"{', platform_basic_info=' + json.dumps(platform_basic_info, ensure_ascii=False) if platform_basic_info else ''}",
+        "请按顺序执行完整的合同审核流程。",
+        (
+            f"1. find_contract_review: contract_path={contract_path!r}"
+            f"{', attachments_path=' + repr(attachments_path) if attachments_path else ''}"
+            f"{', invoice_path=' + repr(invoice_path) if invoice_path else ''}"
+            f"{', platform_basic_info=' + json.dumps(platform_basic_info, ensure_ascii=False) if platform_basic_info else ''}"
+        ),
         "",
-        "2. prepare_contract（使用上一步返回的 material_fingerprint 和路径信息）",
+        "2. prepare_contract（使用第 1 步返回的 material_fingerprint 和路径信息）",
         "3. check_basic_info",
         "4. check_text_integrity",
         "5. check_contract_seals",
@@ -104,16 +107,53 @@ def _ensure_terminal_event(review_id: str, *, cancelled: bool = False) -> None:
     )
 
 
+def _unwrap_review_payload(
+    payload: dict[str, Any],
+    *,
+    not_found_code: str,
+    not_found_message: str,
+    failure_code: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    if not payload.get("error"):
+        return payload
+
+    details = {
+        "review_id": payload.get("review_id"),
+        "error_type": payload.get("error_type"),
+    }
+    if payload.get("error_type") == "NotFoundError":
+        raise api_error(
+            404,
+            not_found_code,
+            not_found_message,
+            details=details,
+        )
+
+    raise api_error(
+        500,
+        failure_code,
+        failure_message,
+        details=details,
+    )
+
+
 @router.post("")
 async def create_review(payload: dict[str, Any]) -> dict[str, Any]:
     contract_path = str(payload.get("contract_path", ""))
     if not contract_path:
-        raise HTTPException(status_code=400, detail="缺少 contract_path")
+        raise api_error(400, "CONTRACT_PATH_REQUIRED", "缺少 contract_path")
 
     attachments_path = str(payload.get("attachments_path", ""))
     invoice_path = str(payload.get("invoice_path", ""))
     platform_info = payload.get("platform_basic_info")
-    if not platform_info or not isinstance(platform_info, dict):
+    if platform_info is not None and not isinstance(platform_info, dict):
+        raise api_error(
+            422,
+            "INVALID_PLATFORM_BASIC_INFO",
+            "platform_basic_info 必须是对象",
+        )
+    if not platform_info:
         platform_info = None
 
     _logger.info("Received review request: contract_path={}", contract_path)
@@ -151,9 +191,13 @@ async def create_review(payload: dict[str, Any]) -> dict[str, Any]:
             "started": started,
             "status": status,
         }
-    except Exception as exc:
-        _logger.error("Failed to create review: {}", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        _logger.exception("Failed to create review")
+        raise api_error(
+            500,
+            "REVIEW_START_FAILED",
+            "启动审核任务失败",
+        )
 
 
 @router.get("/{review_id}/stream")
@@ -165,7 +209,12 @@ async def stream_review(
     try:
         _load_review(review_id)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"审核任务不存在: {review_id}")
+        raise api_error(
+            404,
+            "REVIEW_NOT_FOUND",
+            "审核任务不存在",
+            details={"review_id": review_id},
+        )
 
     async def event_generator():
         last_seq = after_seq
@@ -202,7 +251,7 @@ async def stream_review(
                 "timestamp": "",
                 "review_id": review_id,
                 "kind": "error",
-                "summary": f"服务异常: {exc}",
+                "summary": f"事件流服务异常: {exc}",
                 "detail": str(exc),
                 "node": "",
                 "tool_call_id": "",
@@ -225,7 +274,13 @@ async def stream_review(
 
 @router.get("/{review_id}/status")
 async def get_review_status(review_id: str) -> dict[str, Any]:
-    status = _with_service(lambda service: service.get_review_status(review_id))
+    status = _unwrap_review_payload(
+        _with_service(lambda service: service.get_review_status(review_id)),
+        not_found_code="REVIEW_NOT_FOUND",
+        not_found_message="审核任务不存在",
+        failure_code="REVIEW_STATUS_UNAVAILABLE",
+        failure_message="加载审核状态失败",
+    )
     status["execution_state"] = _runtime.state(review_id)
     status["last_event_seq"] = _event_store.last_seq(review_id)
     return status
@@ -233,7 +288,13 @@ async def get_review_status(review_id: str) -> dict[str, Any]:
 
 @router.get("/{review_id}/report")
 async def get_review_report(review_id: str) -> dict[str, Any]:
-    return _with_service(lambda service: service.get_review_result(review_id))
+    return _unwrap_review_payload(
+        _with_service(lambda service: service.get_review_result(review_id)),
+        not_found_code="REVIEW_NOT_FOUND",
+        not_found_message="审核任务不存在",
+        failure_code="REVIEW_REPORT_UNAVAILABLE",
+        failure_message="加载审核报告失败",
+    )
 
 
 @router.get("/{review_id}/report/markdown")
@@ -241,7 +302,12 @@ async def get_review_report_markdown(review_id: str) -> PlainTextResponse:
     def _read(service: ContractReviewService) -> str:
         md_path = service.store.review_dir(review_id) / "reports" / "contract_review.md"
         if not md_path.exists():
-            raise HTTPException(status_code=404, detail="Markdown 报告尚未生成")
+            raise api_error(
+                404,
+                "REVIEW_REPORT_NOT_READY",
+                "Markdown 报告尚未生成",
+                details={"review_id": review_id},
+            )
         return md_path.read_text(encoding="utf-8")
 
     return PlainTextResponse(

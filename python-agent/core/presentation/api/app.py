@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .errors import register_exception_handlers
 from .routes.contracts import router as contract_router
 from .routes.reviews import router as reviews_router
 
@@ -18,6 +19,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    register_exception_handlers(app)
     app.include_router(contract_router)
     app.include_router(reviews_router)
     return app

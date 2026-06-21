@@ -21,6 +21,9 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    public static final String AUTH_ERROR_CODE_ATTR = "auth_error_code";
+    public static final String AUTH_ERROR_MESSAGE_ATTR = "auth_error_message";
+
     private final JwtTokenProvider jwtTokenProvider;
     private final UserDetailsServiceImpl userDetailsService;
 
@@ -52,6 +55,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             valid = jwtTokenProvider.validateToken(token);
             log.debug("JWT filter: token validation result={}", valid);
             if (!valid) {
+                request.setAttribute(
+                        AUTH_ERROR_CODE_ATTR,
+                        jwtTokenProvider.isTokenExpired(token)
+                                ? "AUTHENTICATION_TOKEN_EXPIRED"
+                                : "AUTHENTICATION_INVALID_TOKEN"
+                );
+                request.setAttribute(
+                        AUTH_ERROR_MESSAGE_ATTR,
+                        jwtTokenProvider.isTokenExpired(token)
+                                ? "Authentication token has expired"
+                                : "Authentication token is invalid"
+                );
                 log.warn(
                         "JWT filter: token INVALID, prefix={}",
                         token.substring(0, Math.min(20, token.length()))
@@ -60,21 +75,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         if (StringUtils.hasText(token) && valid) {
-            Long userId = jwtTokenProvider.getUserIdFromToken(token);
-            log.debug("JWT filter: token valid, userId={}", userId);
-            var userDetails = userDetailsService.loadUserById(userId);
-            log.debug("JWT filter: userDetails loaded, username={}", userDetails.getUsername());
+            try {
+                Long userId = jwtTokenProvider.getUserIdFromToken(token);
+                log.debug("JWT filter: token valid, userId={}", userId);
+                var userDetails = userDetailsService.loadUserById(userId);
+                log.debug("JWT filter: userDetails loaded, username={}", userDetails.getUsername());
 
-            var authentication = new UsernamePasswordAuthenticationToken(
-                    userDetails,
-                    null,
-                    userDetails != null ? userDetails.getAuthorities() : Collections.emptyList()
-            );
-            authentication.setDetails(
-                    new WebAuthenticationDetailsSource().buildDetails(request)
-            );
+                var authentication = new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails != null ? userDetails.getAuthorities() : Collections.emptyList()
+                );
+                authentication.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request)
+                );
 
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (RuntimeException exception) {
+                SecurityContextHolder.clearContext();
+                request.setAttribute(AUTH_ERROR_CODE_ATTR, "AUTHENTICATION_USER_NOT_FOUND");
+                request.setAttribute(
+                        AUTH_ERROR_MESSAGE_ATTR,
+                        "Authenticated user no longer exists"
+                );
+                log.warn("JWT filter: failed to load user from token", exception);
+            }
         }
 
         filterChain.doFilter(request, response);

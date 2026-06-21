@@ -4,6 +4,9 @@ import com.contract.dto.AuthResponse;
 import com.contract.dto.LoginRequest;
 import com.contract.dto.RegisterRequest;
 import com.contract.entity.User;
+import com.contract.exception.ConflictException;
+import com.contract.exception.NotFoundException;
+import com.contract.exception.UnauthorizedException;
 import com.contract.repository.UserRepository;
 import com.contract.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +23,10 @@ public class AuthService {
 
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new RuntimeException("该邮箱已被注册");
+            throw new ConflictException("AUTH_EMAIL_IN_USE", "Email is already registered");
         }
         if (userRepository.existsByUsername(request.username())) {
-            throw new RuntimeException("该用户名已被使用");
+            throw new ConflictException("AUTH_USERNAME_IN_USE", "Username is already in use");
         }
 
         User user = User.builder()
@@ -39,10 +42,16 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("邮箱或密码错误"));
+                .orElseThrow(() -> new UnauthorizedException(
+                        "AUTH_INVALID_CREDENTIALS",
+                        "Email or password is incorrect"
+                ));
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            throw new RuntimeException("邮箱或密码错误");
+            throw new UnauthorizedException(
+                    "AUTH_INVALID_CREDENTIALS",
+                    "Email or password is incorrect"
+            );
         }
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername());
@@ -51,7 +60,7 @@ public class AuthService {
 
     public AuthResponse getCurrentUser(Long userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User does not exist"));
         return new AuthResponse(null, user.getId(), user.getUsername(), user.getEmail());
     }
 }

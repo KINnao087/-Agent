@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { extractApiErrorMessage } from '@/api/errors'
 import { contractsApi, type ContractItem } from '@/api/contracts'
 
 const contracts = ref<ContractItem[]>([])
@@ -35,7 +36,7 @@ async function handleDelete(contractId: number) {
     await contractsApi.delete(contractId)
     contracts.value = contracts.value.filter(c => c.id !== contractId)
   } catch (e: any) {
-    alert(e.response?.data?.message || '删除失败')
+    alert(extractApiErrorMessage(e, '删除失败'))
   } finally {
     deleting.value = null
   }

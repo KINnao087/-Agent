@@ -4,6 +4,10 @@ import com.contract.dto.ContractResponse;
 import com.contract.dto.ContractUploadRequest;
 import com.contract.entity.Contract;
 import com.contract.entity.User;
+import com.contract.exception.BadRequestException;
+import com.contract.exception.ForbiddenException;
+import com.contract.exception.InternalOperationException;
+import com.contract.exception.NotFoundException;
 import com.contract.repository.ContractRepository;
 import com.contract.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +32,7 @@ public class ContractService {
 
     public ContractResponse createContract(Long userId, ContractUploadRequest request) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("用户不存在"));
+                .orElseThrow(() -> new NotFoundException("USER_NOT_FOUND", "User does not exist"));
 
         Contract contract = Contract.builder()
                 .user(user)
@@ -48,136 +52,124 @@ public class ContractService {
     }
 
     public ContractResponse getContract(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
-        return ContractResponse.from(contract);
+        return ContractResponse.from(getOwnedContract(userId, contractId));
     }
 
-    /**
-     * 发起审核：调 Python 创建 review，更新本地状态，返回 reviewId。
-     */
-    public String startReview(Long userId, Long contractId,
-                               String attachmentsPath, String invoicePath,
-                               String platformBasicInfo) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
+    public String startReview(
+            Long userId,
+            Long contractId,
+            String attachmentsPath,
+            String invoicePath,
+            Map<String, Object> platformBasicInfo
+    ) {
+        Contract contract = getOwnedContract(userId, contractId);
 
-        // 调 Python 创建审核任务
         var payload = new java.util.HashMap<String, Object>();
         payload.put("contract_path", contract.getFilePath());
         payload.put("attachments_path", attachmentsPath != null ? attachmentsPath : "");
         payload.put("invoice_path", invoicePath != null ? invoicePath : "");
-        payload.put("platform_basic_info", platformBasicInfo != null ? platformBasicInfo : "");
-        String reviewId = pythonClient.startReview(payload);
+        payload.put("platform_basic_info", platformBasicInfo);
 
-        // 更新本地记录
+        String reviewId = pythonClient.startReview(payload);
         contract.setReviewId(reviewId);
         contract.setStatus(Contract.ReviewStatus.reviewing);
         contractRepository.save(contract);
-
         return reviewId;
     }
 
-    /**
-     * 返回审核 SSE 流。
-     */
     public SseEmitter streamReview(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
+        Contract contract = getOwnedContract(userId, contractId);
         if (contract.getReviewId() == null) {
-            throw new RuntimeException("尚未发起审核");
+            throw new BadRequestException("REVIEW_NOT_STARTED", "Review has not been started");
         }
         return pythonClient.streamReview(contract.getReviewId());
     }
 
     public Map<String, Object> getReport(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
+        Contract contract = getOwnedContract(userId, contractId);
         if (contract.getReviewId() == null) {
-            throw new RuntimeException("尚未发起审核");
+            throw new BadRequestException("REVIEW_NOT_STARTED", "Review has not been started");
         }
         return pythonClient.getReviewReport(contract.getReviewId());
     }
 
     public String getReportMarkdown(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
+        Contract contract = getOwnedContract(userId, contractId);
         if (contract.getReviewId() == null) {
-            throw new RuntimeException("尚未发起审核");
+            throw new BadRequestException("REVIEW_NOT_STARTED", "Review has not been started");
         }
         return pythonClient.getReviewMarkdown(contract.getReviewId());
     }
 
-    /**
-     * 更新合同审核状态（前端调用来推进状态流转）。
-     */
     public ContractResponse updateStatus(Long userId, Long contractId, String newStatus) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
+        Contract contract = getOwnedContract(userId, contractId);
+        if (newStatus == null || newStatus.isBlank()) {
+            throw new BadRequestException("STATUS_REQUIRED", "Status is required");
         }
-        contract.setStatus(Contract.ReviewStatus.valueOf(newStatus));
+
+        Contract.ReviewStatus parsedStatus;
+        try {
+            parsedStatus = Contract.ReviewStatus.valueOf(newStatus);
+        } catch (IllegalArgumentException exception) {
+            throw new BadRequestException(
+                    "INVALID_CONTRACT_STATUS",
+                    "Unsupported contract status",
+                    Map.of("status", newStatus)
+            );
+        }
+
+        contract.setStatus(parsedStatus);
         contract = contractRepository.save(contract);
         return ContractResponse.from(contract);
     }
 
     public void cancelReview(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
+        Contract contract = getOwnedContract(userId, contractId);
+        if (contract.getReviewId() == null) {
+            throw new BadRequestException("REVIEW_NOT_STARTED", "Review has not been started");
         }
-        if (contract.getReviewId() != null) {
-            pythonClient.cancelReview(contract.getReviewId());
-        }
+
+        pythonClient.cancelReview(contract.getReviewId());
         contract.setStatus(Contract.ReviewStatus.failed);
         contractRepository.save(contract);
     }
 
-    /**
-     * 删除合同：取消远程审核 → 删除本地文件 → 删除数据库记录。
-     */
     public void deleteContract(Long userId, Long contractId) {
-        Contract contract = contractRepository.findById(contractId)
-                .orElseThrow(() -> new RuntimeException("合同不存在"));
-        if (!contract.getUser().getId().equals(userId)) {
-            throw new RuntimeException("无权访问");
-        }
+        Contract contract = getOwnedContract(userId, contractId);
 
-        // 如果有关联的审核任务，先取消
         if (contract.getReviewId() != null) {
             try {
                 pythonClient.cancelReview(contract.getReviewId());
-            } catch (Exception e) {
-                log.warn("取消远程审核失败: {}", e.getMessage());
+            } catch (NotFoundException exception) {
+                log.info(
+                        "Remote review already missing during delete: contractId={}, reviewId={}",
+                        contractId,
+                        contract.getReviewId()
+                );
             }
         }
 
-        // 删除服务器上的物理文件
         if (contract.getFilePath() != null) {
             try {
                 Files.deleteIfExists(Path.of(contract.getFilePath()));
-            } catch (IOException e) {
-                log.warn("删除合同文件失败: {}", e.getMessage());
+            } catch (IOException exception) {
+                throw new InternalOperationException(
+                        "CONTRACT_FILE_DELETE_FAILED",
+                        "Failed to delete contract file",
+                        Map.of("filePath", contract.getFilePath())
+                );
             }
         }
 
         contractRepository.delete(contract);
+    }
+
+    private Contract getOwnedContract(Long userId, Long contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new NotFoundException("CONTRACT_NOT_FOUND", "Contract does not exist"));
+        if (!contract.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("CONTRACT_ACCESS_DENIED", "You do not have access to this contract");
+        }
+        return contract;
     }
 }
