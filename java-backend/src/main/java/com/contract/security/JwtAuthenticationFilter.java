@@ -25,35 +25,54 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final UserDetailsServiceImpl userDetailsService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain)
-            throws ServletException, IOException {
+    protected boolean shouldNotFilterAsyncDispatch() {
+        // SSE requests finish through async dispatch. Re-run JWT extraction there
+        // so the resumed request is not treated as anonymous.
+        return false;
+    }
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
+    ) throws ServletException, IOException {
 
         String token = extractToken(request);
 
-        log.debug("JWT filter: method={}, uri={}, hasToken={}",
-                request.getMethod(), request.getRequestURI(), StringUtils.hasText(token));
+        log.debug(
+                "JWT filter: method={}, uri={}, hasToken={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                StringUtils.hasText(token)
+        );
 
+        boolean valid = false;
         if (StringUtils.hasText(token)) {
-            boolean valid = jwtTokenProvider.validateToken(token);
+            valid = jwtTokenProvider.validateToken(token);
             log.debug("JWT filter: token validation result={}", valid);
             if (!valid) {
-                log.warn("JWT filter: token INVALID — token={}", token.substring(0, Math.min(20, token.length())));
+                log.warn(
+                        "JWT filter: token INVALID, prefix={}",
+                        token.substring(0, Math.min(20, token.length()))
+                );
             }
         }
 
-        if (StringUtils.hasText(token) && jwtTokenProvider.validateToken(token)) {
+        if (StringUtils.hasText(token) && valid) {
             Long userId = jwtTokenProvider.getUserIdFromToken(token);
             log.debug("JWT filter: token valid, userId={}", userId);
             var userDetails = userDetailsService.loadUserById(userId);
             log.debug("JWT filter: userDetails loaded, username={}", userDetails.getUsername());
 
             var authentication = new UsernamePasswordAuthenticationToken(
-                    userDetails, null,
-                    userDetails != null ? userDetails.getAuthorities() : Collections.emptyList());
+                    userDetails,
+                    null,
+                    userDetails != null ? userDetails.getAuthorities() : Collections.emptyList()
+            );
             authentication.setDetails(
-                    new WebAuthenticationDetailsSource().buildDetails(request));
+                    new WebAuthenticationDetailsSource().buildDetails(request)
+            );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
@@ -62,12 +81,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private String extractToken(HttpServletRequest request) {
-        // Header: Authorization: Bearer <token>
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
         }
-        // Query param fallback (for SSE EventSource which can't set headers)
+
+        // EventSource cannot set custom headers, so SSE uses query token fallback.
         String queryToken = request.getParameter("token");
         if (StringUtils.hasText(queryToken)) {
             return queryToken;

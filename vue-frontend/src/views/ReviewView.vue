@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { contractsApi, type ContractItem } from '@/api/contracts'
 import ExecutionTree from '@/components/ExecutionTree.vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
+import { appendDiagnosticLog } from '@/utils/diagnostics'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -105,7 +106,16 @@ function connectStream() {
     }
   }
 
-  eventSource.onerror = () => {
+  eventSource.onerror = (rawEvent) => {
+    const details = {
+      contractId: contract.value?.id ?? null,
+      reviewId: contract.value?.reviewId ?? null,
+      url,
+      readyState: eventSource?.readyState ?? null,
+      event: rawEvent,
+    }
+    console.warn('ReviewView EventSource error', details)
+    appendDiagnosticLog('warn', 'review.view', 'sse_error', details)
     streaming.value = false
     eventSource?.close()
   }
@@ -116,8 +126,15 @@ async function loadMarkdown() {
   try {
     const res = await contractsApi.getReportMarkdown(contract.value.id)
     markdown.value = res.data
-  } catch {
-    console.error('ReviewView.loadMarkdown failed', { contractId: contract.value.id })
+  } catch (e: any) {
+    const details = {
+      contractId: contract.value.id,
+      status: e?.response?.status ?? null,
+      data: e?.response?.data ?? null,
+      message: e?.message ?? null,
+    }
+    console.error('ReviewView.loadMarkdown failed', details)
+    appendDiagnosticLog('error', 'review.view', 'load_markdown_failed', details)
     markdown.value = ''
   }
 }

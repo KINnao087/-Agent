@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth'
+import { appendDiagnosticLog } from '@/utils/diagnostics'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
@@ -43,7 +44,17 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('user', JSON.stringify(user.value))
   }
 
-  function logout() {
+  function logout(reason = 'unknown', meta?: unknown) {
+    const details = {
+      reason,
+      meta,
+      hasToken: !!token.value,
+      userId: user.value?.id ?? null,
+      currentPath: window.location.pathname,
+      stack: new Error().stack,
+    }
+    console.warn('auth.logout called', details)
+    appendDiagnosticLog('warn', 'auth.store', 'logout', details)
     token.value = ''
     user.value = null
     localStorage.removeItem('token')

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { appendDiagnosticLog } from '@/utils/diagnostics'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -43,7 +44,16 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth) {
     const auth = useAuthStore()
     if (!auth.token) {
-      auth.logout()
+      const details = {
+        to: to.fullPath,
+        currentPath: window.location.pathname,
+      }
+      console.warn('router guard redirecting to /login because token is missing', details)
+      appendDiagnosticLog('warn', 'router.guard', 'missing_token_redirect', details)
+      auth.logout('router_missing_token', {
+        to: to.fullPath,
+        currentPath: window.location.pathname,
+      })
       next('/login')
       return
     }

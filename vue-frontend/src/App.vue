@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from './stores/auth'
 import { useRouter, useRoute } from 'vue-router'
+import { appendDiagnosticLog } from '@/utils/diagnostics'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -56,7 +57,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 // ===== 登出 =====
 function logout() {
-  auth.logout()
+  console.info('User initiated logout')
+  appendDiagnosticLog('info', 'app', 'user_click_logout', {
+    currentPath: window.location.pathname,
+  })
+  auth.logout('user_click')
   router.push('/login')
 }
 

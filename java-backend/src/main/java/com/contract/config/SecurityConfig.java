@@ -1,6 +1,8 @@
 package com.contract.config;
 
 import com.contract.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +19,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
+@Slf4j
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
@@ -31,9 +34,20 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exception -> exception
-                    .authenticationEntryPoint((request, response, authException) ->
-                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED)))
+                    .authenticationEntryPoint((request, response, authException) -> {
+                        log.warn(
+                                "401 entry point: method={}, uri={}, query={}, hasAuthHeader={}, hasTokenParam={}, message={}",
+                                request.getMethod(),
+                                request.getRequestURI(),
+                                request.getQueryString(),
+                                request.getHeader("Authorization") != null,
+                                request.getParameter("token") != null,
+                                authException.getMessage()
+                        );
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                    }))
             .authorizeHttpRequests(auth -> auth
+                    .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                     .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .anyRequest().authenticated())
