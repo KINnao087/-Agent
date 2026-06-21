@@ -22,7 +22,7 @@ function formatMs(ms: number | null): string {
 
 <template>
   <div class="exec-tree">
-    <div v-for="(evt, i) in events" :key="i" class="exec-row">
+    <div v-for="(evt, i) in events" :key="evt.seq || i" class="exec-row">
       <span class="exec-icon">{{ iconFor(evt.kind) }}</span>
       <span :class="'exec-text ' + rowClass(evt.kind, evt)">
         <strong v-if="evt.tool_name">{{ evt.tool_name }}</strong>

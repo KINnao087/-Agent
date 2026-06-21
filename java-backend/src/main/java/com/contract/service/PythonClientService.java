@@ -157,6 +157,7 @@ public class PythonClientService {
                         new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
+//                        log.info(line);
                         if (line.startsWith("data: ")) {
                             String data = line.substring(6);
                             emitter.send(SseEmitter.event().data(data));

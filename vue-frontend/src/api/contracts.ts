@@ -9,6 +9,11 @@ export interface ContractItem {
   createdAt: string
 }
 
+export interface StartReviewResponse {
+  reviewId: string
+  status: string
+}
+
 export const contractsApi = {
   list() {
     return client.get<ContractItem[]>('/contracts')
@@ -21,7 +26,7 @@ export const contractsApi = {
     return client.post<ContractItem>('/contracts', formData)
   },
   startReview(id: number) {
-    return client.post(`/contracts/${id}/review`)
+    return client.post<StartReviewResponse>(`/contracts/${id}/review`)
   },
   getReport(id: number) {
     return client.get(`/contracts/${id}/report`)

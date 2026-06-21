@@ -5,10 +5,9 @@ import { authApi } from '@/api/auth'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
-  let expiryTimer: ReturnType<typeof setTimeout> | null = null
 
   const isLoggedIn = computed(() => {
-    return !!token.value && !isTokenExpired(token.value)
+    return !!token.value
   })
 
   async function login(email: string, password: string) {
@@ -17,7 +16,6 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = { id: res.data.userId, username: res.data.username, email: res.data.email }
     localStorage.setItem('token', token.value)
     localStorage.setItem('user', JSON.stringify(user.value))
-    scheduleTokenExpiry(token.value)
   }
 
   function getTokenExpiresAt(token: string): number | null {
@@ -37,57 +35,19 @@ export const useAuthStore = defineStore('auth', () => {
     return !expiresAt || Date.now() >= expiresAt
   }
 
-  function scheduleTokenExpiry(currentToken: string) {
-    if (expiryTimer) {
-      clearTimeout(expiryTimer)
-      expiryTimer = null
-    }
-
-    const expiresAt = getTokenExpiresAt(currentToken)
-    if (!expiresAt) {
-      logout()
-      return
-    }
-
-    const delay = expiresAt - Date.now()
-    if (delay <= 0) {
-      logout()
-      if (window.location.pathname !== '/login') {
-        window.location.replace('/login')
-      }
-      return
-    }
-
-    expiryTimer = setTimeout(() => {
-      logout()
-      if (window.location.pathname !== '/login') {
-        window.location.replace('/login')
-      }
-    }, delay)
-  }
-
   async function register(username: string, email: string, password: string) {
     const res = await authApi.register(username, email, password)
     token.value = res.data.token
     user.value = { id: res.data.userId, username: res.data.username, email: res.data.email }
     localStorage.setItem('token', token.value)
     localStorage.setItem('user', JSON.stringify(user.value))
-    scheduleTokenExpiry(token.value)
   }
 
   function logout() {
-    if (expiryTimer) {
-      clearTimeout(expiryTimer)
-      expiryTimer = null
-    }
     token.value = ''
     user.value = null
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-  }
-
-  if (token.value) {
-    scheduleTokenExpiry(token.value)
   }
 
   return { token, user, isLoggedIn, login, register, logout, isTokenExpired }

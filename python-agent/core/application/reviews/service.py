@@ -600,6 +600,23 @@ class ContractReviewService:
 
     def write_review_report(self, review_id: str) -> dict[str, Any]:
         manifest = self.store.load(review_id)
+        prepare_record = manifest.steps.get("prepare_contract")
+        if not prepare_record:
+            return {
+                "review_status": "blocked",
+                "reason": "prepare_contract 尚未执行",
+                "cached": False,
+            }
+        if prepare_record.status != "completed" or not is_step_current(
+            prepare_record,
+            self._required_versions("prepare_contract", manifest),
+        ):
+            return {
+                "review_status": "blocked",
+                "reason": "prepare_contract 结果不可用",
+                "cached": False,
+            }
+
         missing_steps = [
             name
             for name in REQUIRED_REVIEW_STEPS
@@ -617,13 +634,20 @@ class ContractReviewService:
                 )
             )
         ]
-        if missing_steps or stale_steps:
-            return {
-                "review_status": "blocked",
-                "missing_steps": missing_steps,
-                "stale_steps": stale_steps,
-                "cached": False,
-            }
+        incomplete_steps = [
+            name
+            for name in REQUIRED_REVIEW_STEPS
+            if (
+                (record := manifest.steps.get(name))
+                and (
+                    record.status != "completed"
+                    or not is_step_current(
+                        record,
+                        self._required_versions(name, manifest),
+                    )
+                )
+            )
+        ]
         report_versions = self._required_versions(
             "write_review_report",
             manifest,
@@ -632,12 +656,19 @@ class ContractReviewService:
         def operation() -> dict[str, Any]:
             current = self.store.load(review_id)
             sections: dict[str, Any] = {}
-            for name, record in current.steps.items():
-                if name in {"prepare_contract", "write_review_report"}:
+            stale_step_set = set(stale_steps)
+            for name in REQUIRED_REVIEW_STEPS:
+                record = current.steps.get(name)
+                if not record:
+                    sections[name] = {"status": "not_executed", "result": None}
                     continue
                 if record.status == "completed" and record.result_path:
                     result = self.store.read_result(review_id, record.result_path)
-                    status = _classify_result(name, result)
+                    status = (
+                        "unknown"
+                        if name in stale_step_set
+                        else _classify_result(name, result)
+                    )
                 elif record.status == "failed":
                     result = {"error": record.error}
                     status = "execution_failed"
@@ -663,6 +694,14 @@ class ContractReviewService:
             report = {
                 "review_id": review_id,
                 "overall_status": overall_status,
+                "report_scope": (
+                    "complete"
+                    if not missing_steps and not stale_steps and not incomplete_steps
+                    else "partial"
+                ),
+                "missing_steps": missing_steps,
+                "stale_steps": stale_steps,
+                "incomplete_steps": incomplete_steps,
                 "sections": sections,
                 "json_path": "reports/contract_review.json",
                 "markdown_path": "reports/contract_review.md",
@@ -721,6 +760,11 @@ class ContractReviewService:
             for name in REQUIRED_REVIEW_STEPS
             if (steps.get(name) or {}).get("status") == "stale"
         ]
+        incomplete_steps = [
+            name
+            for name in REQUIRED_REVIEW_STEPS
+            if (steps.get(name) or {}).get("status") != "completed"
+        ]
         return {
             "review_id": review_id,
             "contract_fingerprint": manifest.contract_fingerprint,
@@ -728,7 +772,10 @@ class ContractReviewService:
             "steps": steps,
             "missing_steps": missing_steps,
             "stale_steps": stale_steps,
-            "ready_for_report": not missing_steps and not stale_steps,
+            "incomplete_steps": incomplete_steps,
+            "ready_for_report": (
+                not missing_steps and not stale_steps and not incomplete_steps
+            ),
             "artifacts": manifest.artifacts,
         }
 
