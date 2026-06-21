@@ -4,6 +4,7 @@ import { contractsApi, type ContractItem } from '@/api/contracts'
 
 const contracts = ref<ContractItem[]>([])
 const loading = ref(true)
+const deleting = ref<number | null>(null)
 
 onMounted(async () => {
   try {
@@ -23,6 +24,21 @@ function statusLabel(s: string) {
     failed:         '失败',
   }
   return labels[s] || s
+}
+
+async function handleDelete(contractId: number) {
+  if (!confirm('确定要删除这份合同吗？此操作不可撤销。')) {
+    return
+  }
+  deleting.value = contractId
+  try {
+    await contractsApi.delete(contractId)
+    contracts.value = contracts.value.filter(c => c.id !== contractId)
+  } catch (e: any) {
+    alert(e.response?.data?.message || '删除失败')
+  } finally {
+    deleting.value = null
+  }
 }
 </script>
 
@@ -45,9 +61,18 @@ function statusLabel(s: string) {
           <span :class="'status-tag status-' + c.status">{{ statusLabel(c.status) }}</span>
         </div>
         <div style="font-size:12px;color:var(--text-tertiary)">创建于 {{ new Date(c.createdAt).toLocaleString() }}</div>
-        <router-link :to="'/contracts/' + c.id + '/review'">
-          <button class="btn btn-primary" style="margin-top:14px;width:100%">查看审核</button>
-        </router-link>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <router-link :to="'/contracts/' + c.id + '/review'" style="flex:1">
+            <button class="btn btn-primary" style="width:100%">查看审核</button>
+          </router-link>
+          <button
+            class="btn btn-danger"
+            :disabled="deleting === c.id"
+            @click="handleDelete(c.id)"
+          >
+            {{ deleting === c.id ? '删除中...' : '删除' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

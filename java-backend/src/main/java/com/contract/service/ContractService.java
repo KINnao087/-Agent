@@ -11,6 +11,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -145,5 +148,36 @@ public class ContractService {
         }
         contract.setStatus(Contract.ReviewStatus.failed);
         contractRepository.save(contract);
+    }
+
+    /**
+     * 删除合同：取消远程审核 → 删除本地文件 → 删除数据库记录。
+     */
+    public void deleteContract(Long userId, Long contractId) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("合同不存在"));
+        if (!contract.getUser().getId().equals(userId)) {
+            throw new RuntimeException("无权访问");
+        }
+
+        // 如果有关联的审核任务，先取消
+        if (contract.getReviewId() != null) {
+            try {
+                pythonClient.cancelReview(contract.getReviewId());
+            } catch (Exception e) {
+                log.warn("取消远程审核失败: {}", e.getMessage());
+            }
+        }
+
+        // 删除服务器上的物理文件
+        if (contract.getFilePath() != null) {
+            try {
+                Files.deleteIfExists(Path.of(contract.getFilePath()));
+            } catch (IOException e) {
+                log.warn("删除合同文件失败: {}", e.getMessage());
+            }
+        }
+
+        contractRepository.delete(contract);
     }
 }

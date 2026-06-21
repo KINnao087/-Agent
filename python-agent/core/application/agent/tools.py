@@ -20,11 +20,43 @@ from core.shared.logging import get_logger
 _logger = get_logger("tools")
 
 
+def _allowed_tool_roots() -> list[str]:
+    py_root = Path(__file__).parent.parent.parent.parent
+    project_root = py_root.parent
+    roots = [
+        (py_root / "artifacts").resolve(),
+        (py_root / "data").resolve(),
+    ]
+
+    optional_roots = [
+        project_root / "java-backend" / "uploads",
+        project_root / "uploads",
+        project_root / "test" / "testfiles",
+        py_root / "test" / "testfiles",
+        Path("/app/uploads"),
+    ]
+    for candidate in optional_roots:
+        if candidate.is_dir():
+            roots.append(candidate.resolve())
+
+    return [str(root) for root in roots]
+
+
+def _ensure_allowed_path(path: str) -> Path:
+    resolved = Path(path).expanduser().resolve()
+    allowed_roots = _allowed_tool_roots()
+    if not any(str(resolved).startswith(root) for root in allowed_roots):
+        raise PermissionError(
+            f"无权访问路径: {resolved}。仅允许访问 artifacts、data、uploads、testfiles 目录。"
+        )
+    return resolved
+
+
 def _json(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False, indent=2)
     except (TypeError, ValueError) as exc:
-        _logger.error("JSON 序列化失败")
+        _logger.error("JSON serialization failed")
         return json.dumps(
             {
                 "error": True,
@@ -37,11 +69,10 @@ def _json(value: Any) -> str:
 
 
 def _safe_json(fn, *args, **kwargs) -> str:
-    """安全执行函数并返回 JSON 字符串。任何异常都转为结构化错误。"""
     try:
         return _json(fn(*args, **kwargs))
     except Exception as exc:
-        _logger.error("工具调用失败: {}", getattr(fn, "__name__", repr(fn)))
+        _logger.error("Tool call failed: {}", getattr(fn, "__name__", repr(fn)))
         return _json(
             {
                 "error": True,
@@ -50,6 +81,17 @@ def _safe_json(fn, *args, **kwargs) -> str:
                 "traceback": traceback.format_exc(),
             }
         )
+
+
+def _permission_error(path: str, exc: PermissionError) -> str:
+    return _json(
+        {
+            "error": True,
+            "error_type": "PermissionError",
+            "message": str(exc),
+            "path": str(Path(path).expanduser().resolve()),
+        }
+    )
 
 
 @tool
@@ -76,7 +118,7 @@ def prepare_contract(
     invoice_path: str = "",
     platform_basic_info: dict[str, Any] | None = None,
 ) -> str:
-    """创建或恢复审核任务，完成材料标准化、OCR和线性化，返回 review_id。"""
+    """创建或恢复审核任务，完成材料标准化、OCR 和线性化，返回 review_id。"""
     return _safe_json(
         get_contract_review_service().prepare_contract,
         contract_path=contract_path,
@@ -95,25 +137,19 @@ def check_basic_info(review_id: str) -> str:
 @tool
 def check_text_integrity(review_id: str) -> str:
     """审核合同页面连续性、文本完整性、替换页风险和清晰度。"""
-    return _safe_json(
-        get_contract_review_service().check_text_integrity, review_id
-    )
+    return _safe_json(get_contract_review_service().check_text_integrity, review_id)
 
 
 @tool
 def check_contract_seals(review_id: str) -> str:
     """审核甲乙方普通签章，不包含骑缝章。"""
-    return _safe_json(
-        get_contract_review_service().check_contract_seals, review_id
-    )
+    return _safe_json(get_contract_review_service().check_contract_seals, review_id)
 
 
 @tool
 def check_cross_page_seal(review_id: str) -> str:
     """审核骑缝章存在性、连续性、缺失页和风险等级。"""
-    return _safe_json(
-        get_contract_review_service().check_cross_page_seal, review_id
-    )
+    return _safe_json(get_contract_review_service().check_cross_page_seal, review_id)
 
 
 @tool
@@ -138,9 +174,7 @@ def get_review_status(review_id: str) -> str:
 @tool
 def write_review_report(review_id: str) -> str:
     """从已持久化专项结果确定性生成 JSON 和 Markdown 综合报告。"""
-    return _safe_json(
-        get_contract_review_service().write_review_report, review_id
-    )
+    return _safe_json(get_contract_review_service().write_review_report, review_id)
 
 
 @tool
@@ -159,34 +193,35 @@ def list_files(
     recursive: bool = False,
     max_entries: int = 200,
 ) -> str:
-    """列出指定目录中的文件和子目录。仅限在审核产物和上传目录范围内使用。"""
-    # 限制可访问的根目录，防止 AI 浏览项目源码和测试文件
-    allowed_roots = [
-        str((Path(__file__).parent.parent.parent.parent.parent / "artifacts").resolve()),
-        str((Path(__file__).parent.parent.parent.parent.parent / "data").resolve()),
-        str(Path("uploads").resolve()),
-    ]
-    resolved = str(Path(path).expanduser().resolve())
-    if not any(resolved.startswith(root) for root in allowed_roots):
-        return json.dumps({
-            "error": True,
-            "error_type": "PermissionError",
-            "message": f"无权访问此目录: {path}。仅限 artifacts、data、uploads 目录。",
-        }, ensure_ascii=False)
-    return _safe_json(sys_ls, path=path, recursive=recursive, max_entries=max_entries)
+    """列出指定目录中的文件和子目录，仅允许访问审核产物、上传目录和测试样例目录。"""
+    try:
+        resolved = _ensure_allowed_path(path)
+    except PermissionError as exc:
+        return _permission_error(path, exc)
+    return _safe_json(
+        sys_ls,
+        path=str(resolved),
+        recursive=recursive,
+        max_entries=max_entries,
+    )
 
 
 @tool
 def read_text_file(path: str, max_chars: int = 20000) -> str:
     """读取本机 UTF-8 文本文件。"""
-    return _safe_json(sys_readfile, path=path, max_chars=max_chars)
+    try:
+        resolved = _ensure_allowed_path(path)
+    except PermissionError as exc:
+        return _permission_error(path, exc)
+    return _safe_json(sys_readfile, path=str(resolved), max_chars=max_chars)
 
 
 @tool
 def read_image(path: str, runtime: ToolRuntime) -> Command:
     """读取本机图片并将图片附加到下一轮模型输入。"""
     try:
-        result = sys_readimage(path=path, include_data_url=True)
+        resolved = _ensure_allowed_path(path)
+        result = sys_readimage(path=str(resolved), include_data_url=True)
         summary = _json(
             {
                 "path": result["path"],
@@ -201,7 +236,7 @@ def read_image(path: str, runtime: ToolRuntime) -> Command:
                     ToolMessage(content=summary, tool_call_id=runtime.tool_call_id),
                     HumanMessage(
                         content=[
-                            {"type": "text", "text": f"图片文件：{result['path']}"},
+                            {"type": "text", "text": f"图片文件: {result['path']}"},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": result["data_url"]},
@@ -212,7 +247,7 @@ def read_image(path: str, runtime: ToolRuntime) -> Command:
             }
         )
     except Exception as exc:
-        _logger.error("read_image 失败")
+        _logger.error("read_image failed")
         return Command(
             update={
                 "messages": [

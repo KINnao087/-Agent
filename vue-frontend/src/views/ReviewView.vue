@@ -16,6 +16,12 @@ const markdown = ref('')
 const approving = ref(false)
 let eventSource: EventSource | null = null
 
+// 合同文件预览（通过 axios blob 加载，避免浏览器原生请求的代理/认证问题）
+const fileBlobUrl = ref('')
+const loadingFile = ref(false)
+const isImage = ref(false)
+const fileError = ref('')
+
 const STATUS_LABELS: Record<string, string> = {
   pending:        '未审核',
   reviewing:      '审核中',
@@ -26,6 +32,26 @@ const STATUS_LABELS: Record<string, string> = {
 
 function statusLabel(s: string) {
   return STATUS_LABELS[s] || s
+}
+
+// ---- 加载合同文件 blob ----
+async function loadFileBlob(contractId: number, filePath: string) {
+  loadingFile.value = true
+  fileError.value = ''
+  try {
+    const res = await contractsApi.getFile(contractId)
+    const contentType = res.headers['content-type'] || 'application/octet-stream'
+    const blob = new Blob([res.data], { type: contentType })
+    fileBlobUrl.value = URL.createObjectURL(blob)
+
+    const ext = filePath.split('.').pop()?.toLowerCase() || ''
+    isImage.value = ['png', 'jpg', 'jpeg'].includes(ext)
+  } catch (e: any) {
+    fileError.value = '文件加载失败'
+    fileBlobUrl.value = ''
+  } finally {
+    loadingFile.value = false
+  }
 }
 
 // ---- 连接 SSE 流（不调 start API，仅重连） ----
@@ -88,6 +114,11 @@ onMounted(async () => {
     const res = await contractsApi.get(id)
     contract.value = res.data
 
+    // 通过 axios blob 加载文件预览
+    if (res.data.filePath) {
+      loadFileBlob(id, res.data.filePath)
+    }
+
     // 有报告就加载
     if (res.data.reviewId) {
       loadMarkdown()
@@ -102,7 +133,12 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => closeStream())
+onUnmounted(() => {
+  closeStream()
+  if (fileBlobUrl.value) {
+    URL.revokeObjectURL(fileBlobUrl.value)
+  }
+})
 
 // ---- 操作 ----
 async function loadMarkdown() {
@@ -160,6 +196,36 @@ function cancelReview() {
         <span :class="'status-tag status-' + contract.status">
           {{ statusLabel(contract.status) }}
         </span>
+      </div>
+
+      <!-- 合同文件预览 -->
+      <div class="file-preview" style="margin:16px 0">
+        <h4 style="font-size:13px;margin-bottom:8px;color:var(--text-secondary)">📎 合同文件预览</h4>
+
+        <!-- 加载中 -->
+        <div v-if="loadingFile" style="padding:20px;text-align:center;color:var(--text-tertiary)">
+          加载文件中...
+        </div>
+
+        <!-- 加载失败 -->
+        <div v-else-if="fileError" style="padding:20px;text-align:center;color:var(--danger)">
+          {{ fileError }}
+        </div>
+
+        <!-- 文件预览 -->
+        <template v-else-if="fileBlobUrl">
+          <img
+            v-if="isImage"
+            :src="fileBlobUrl"
+            :alt="contract?.title || '合同图片'"
+            style="width:100%;max-height:500px;object-fit:contain;border:1px solid var(--border-color);border-radius:6px"
+          />
+          <iframe
+            v-else
+            :src="fileBlobUrl"
+            style="width:100%;height:500px;border:1px solid var(--border-color);border-radius:6px"
+          ></iframe>
+        </template>
       </div>
 
       <div v-if="error" class="error-msg">{{ error }}</div>

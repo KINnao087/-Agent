@@ -10,11 +10,29 @@ const loading = ref(false)
 const error = ref('')
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const allowedExtensions = ['pdf', 'png', 'jpg', 'jpeg']
+const allowedMimeTypes = ['application/pdf', 'image/png', 'image/jpeg']
+
+function isAllowedFile(selectedFile: File): boolean {
+  const extension = selectedFile.name.split('.').pop()?.toLowerCase() || ''
+  return allowedExtensions.includes(extension) && allowedMimeTypes.includes(selectedFile.type)
+}
+
+function setSelectedFile(selectedFile: File) {
+  if (!isAllowedFile(selectedFile)) {
+    file.value = null
+    if (fileInput.value) fileInput.value.value = ''
+    error.value = 'Only PNG, JPG, and PDF files are supported'
+    return
+  }
+  error.value = ''
+  file.value = selectedFile
+}
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
-    file.value = input.files[0]
+    setSelectedFile(input.files[0])
   }
 }
 
@@ -30,7 +48,7 @@ function onDrop(e: DragEvent) {
   dragging.value = false
   const dropped = e.dataTransfer?.files?.[0]
   if (dropped) {
-    file.value = dropped
+    setSelectedFile(dropped)
   }
 }
 
@@ -53,6 +71,10 @@ async function handleUpload() {
   error.value = ''
   if (!file.value) {
     error.value = '请选择文件'
+    return
+  }
+  if (!isAllowedFile(file.value)) {
+    error.value = 'Only PNG, JPG, and PDF files are supported'
     return
   }
   loading.value = true
@@ -98,7 +120,7 @@ async function handleUpload() {
             <input
               ref="fileInput"
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
               class="drop-zone__input"
               @change="onFileChange"
             />
@@ -106,7 +128,7 @@ async function handleUpload() {
             <template v-if="!file">
               <div class="drop-zone__icon">📄</div>
               <div class="drop-zone__text">将文件拖拽到此处</div>
-              <div class="drop-zone__hint">支持 PDF、PNG、JPG、DOC、DOCX</div>
+              <div class="drop-zone__hint">Supports PDF, PNG, JPG</div>
             </template>
 
             <template v-else>

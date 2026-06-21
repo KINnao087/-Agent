@@ -178,6 +178,29 @@ async def stream_review(review_id: str, request: Request) -> StreamingResponse:
                     if event.kind in ("final", "error"):
                         break
                 except StopIteration:
+                    status = service.get_review_status(review_id)
+                    if status.get("ready_for_report"):
+                        final_data = json.dumps(
+                            {
+                                "kind": "final",
+                                "summary": "审核流程已结束",
+                                "detail": "审核步骤已完成，可查看报告。",
+                                "is_error": False,
+                            },
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {final_data}\n\n"
+                    else:
+                        error_data = json.dumps(
+                            {
+                                "kind": "error",
+                                "summary": "审核流程提前结束",
+                                "detail": json.dumps(status, ensure_ascii=False),
+                                "is_error": True,
+                            },
+                            ensure_ascii=False,
+                        )
+                        yield f"data: {error_data}\n\n"
                     break
         except Exception as exc:
             _logger.error("SSE 流式推送失败: {}", exc)

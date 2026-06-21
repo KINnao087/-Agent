@@ -41,6 +41,7 @@ services:
       - ./python-agent/data:/app/data
       - ./python-agent/models:/app/models
       - ./python-agent/config:/app/config
+      - java_uploads:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy

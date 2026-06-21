@@ -35,6 +35,13 @@ export const contractsApi = {
   cancelReview(id: number) {
     return client.delete(`/contracts/${id}/review`)
   },
+  delete(id: number) {
+    return client.delete(`/contracts/${id}`)
+  },
+  /** 获取合同文件 blob，用于前端预览（图片 / PDF）。 */
+  getFile(id: number) {
+    return client.get(`/contracts/${id}/file`, { responseType: 'blob' })
+  },
 }
 
 /**

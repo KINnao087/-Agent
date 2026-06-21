@@ -55,6 +55,9 @@ class FileReviewStore:
     ) -> ReviewManifest:
         existing = self.find_by_material(material_fingerprint)
         if existing:
+            if existing.inputs != inputs:
+                existing.inputs = inputs
+                self.save(existing)
             return existing
 
         review_id = f"review_{material_fingerprint[:16]}"
@@ -71,6 +74,9 @@ class FileReviewStore:
             # 双重检查：锁内再次确认没有竞态创建
             double_check = self.find_by_material(material_fingerprint)
             if double_check:
+                if double_check.inputs != inputs:
+                    double_check.inputs = inputs
+                    self._save_locked(double_check)
                 return double_check
             self._save_locked(manifest)
         return manifest
